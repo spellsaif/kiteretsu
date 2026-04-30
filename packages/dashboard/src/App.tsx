@@ -34,7 +34,7 @@ export default function App() {
         fetch(`${API}/rules`).then(res => res.json()),
         fetch(`${API}/memory`).then(res => res.json()),
         fetch(`${API}/graph`).then(res => res.json()).catch(() => ({ nodes: [], links: [] })),
-        fetch(`${API}/config`).then(res => res.ok ? res.json() : null).catch(() => null),
+        fetch(`${API}/config`).then(res => res.json()).catch(() => null),
       ]);
       setStats(s); setTasks(t); setRules(r); setMemory(m); setGraph(g); setConfig(c);
     } catch (e) { console.error('API fetch failed:', e); }
@@ -559,35 +559,73 @@ function RulesTab({ rules, onReload }: any) {
 
 // ─── Settings ───
 function SettingsTab({ config }: any) {
-  if (!config) return <div className="card"><div className="empty">Loading config...</div></div>;
+  if (!config || config.error) {
+    return (
+      <div className="card" style={{ textAlign: 'center', padding: '40px' }}>
+        <div className="empty">
+          <div style={{ fontSize: '40px', marginBottom: '10px' }}>⚙️</div>
+          <h3>Configuration Not Found</h3>
+          <p style={{ maxWidth: '500px', margin: '10px auto', color: '#71717a' }}>
+            We couldn't load your <code>.kiteretsu/config.json</code>.
+          </p>
+          {config?.attemptedPath && (
+            <div style={{ marginTop: '20px', padding: '12px', background: '#18181b', borderRadius: '8px', fontSize: '11px', textAlign: 'left', border: '1px solid #27272a' }}>
+              <div style={{ color: '#ef4444', marginBottom: '4px', fontWeight: 'bold' }}>Server attempted to read:</div>
+              <code style={{ color: '#a1a1aa', wordBreak: 'break-all' }}>{config.attemptedPath}</code>
+            </div>
+          )}
+          <p style={{ marginTop: '20px', fontSize: '13px' }}>
+            Make sure you've run <code>kiteretsu init</code> in your project root.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
       <div className="page-header">
         <h2>Configuration</h2>
-        <p>.kiteretsu/config.json</p>
+        <p>Managed via <code>.kiteretsu/config.json</code></p>
       </div>
+      
       <div className="card">
         <div className="settings-group">
           <h4>General</h4>
-          <div className="settings-row"><span className="key">Project</span><span className="val">{config.name}</span></div>
-          <div className="settings-row"><span className="key">Version</span><span className="val">{config.version}</span></div>
-        </div>
-        <div className="settings-group">
-          <h4>Include Patterns</h4>
-          <div className="pattern-list">
-            {config.indexing?.include?.map((p: string, i: number) => (
-              <span key={i} className="tag success">{p}</span>
-            ))}
+          <div className="settings-row">
+            <span className="key">Project Name</span>
+            <span className="val" style={{ color: '#6366f1', fontWeight: 'bold' }}>{config.name || 'Unnamed Project'}</span>
+          </div>
+          <div className="settings-row">
+            <span className="key">Schema Version</span>
+            <span className="val">{config.version || '0.1.0'}</span>
           </div>
         </div>
-        <div className="settings-group">
-          <h4>Exclude Patterns</h4>
-          <div className="pattern-list">
-            {config.indexing?.exclude?.map((p: string, i: number) => (
-              <span key={i} className="tag danger">{p}</span>
-            ))}
+
+        <div className="grid-2" style={{ gap: '20px', marginTop: '20px' }}>
+          <div className="settings-group">
+            <h4 style={{ color: '#10b981' }}>Include Patterns</h4>
+            <div className="pattern-list" style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '10px' }}>
+              {config.indexing?.include?.length > 0 ? config.indexing.include.map((p: string, i: number) => (
+                <span key={i} className="tag success" style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.2)' }}>{p}</span>
+              )) : <span className="meta">Using defaults</span>}
+            </div>
           </div>
+
+          <div className="settings-group">
+            <h4 style={{ color: '#ef4444' }}>Exclude Patterns</h4>
+            <div className="pattern-list" style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '10px' }}>
+              {config.indexing?.exclude?.length > 0 ? config.indexing.exclude.map((p: string, i: number) => (
+                <span key={i} className="tag danger" style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>{p}</span>
+              )) : <span className="meta">None excluded</span>}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: '20px', background: 'rgba(99, 102, 241, 0.05)', border: '1px dashed rgba(99, 102, 241, 0.3)' }}>
+        <div style={{ padding: '20px', textAlign: 'center', color: '#71717a', fontSize: '13px' }}>
+          💡 Tip: Edit <code>config.json</code> directly in your editor to see changes reflected here.
         </div>
       </div>
     </div>

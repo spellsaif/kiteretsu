@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { Kiteretsu } from '@kiteretsu/core';
 import path from 'path';
+import fs from 'fs';
 
 export function startServer(rootDir: string, port: number = 3000) {
   const app = express();
@@ -134,12 +135,19 @@ export function startServer(rootDir: string, port: number = 3000) {
   // Config
   app.get('/api/config', async (req, res) => {
     try {
-      const configPath = path.join(rootDir, '.kiteretsu', 'config.json');
-      if (require('fs').existsSync(configPath)) {
-        const config = require('fs').readFileSync(configPath, 'utf-8');
-        res.json(JSON.parse(config));
+      const absoluteRoot = path.resolve(rootDir);
+      const configPath = path.join(absoluteRoot, '.kiteretsu', 'config.json');
+      
+      if (fs.existsSync(configPath)) {
+        const configText = fs.readFileSync(configPath, 'utf-8');
+        res.json(JSON.parse(configText));
       } else {
-        res.status(404).json({ error: 'Config not found' });
+        // Return 404 with the path so the frontend can display it for debugging
+        res.status(404).json({ 
+          error: 'Config file not found', 
+          attemptedPath: configPath,
+          rootDir: absoluteRoot 
+        });
       }
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -157,20 +165,34 @@ export function startServer(rootDir: string, port: number = 3000) {
       const allIds = new Set<number>();
       edges.forEach((e: any) => { allIds.add(e.source_id); allIds.add(e.target_id); });
 
-      const files = await knex('files').whereIn('id', Array.from(allIds)).select('id', 'path');
-      const fileMap = new Map(files.map((f: any) => [f.id, f.path]));
+      const files = await knex('files')
+        .whereIn('id', Array.from(allIds))
+        .select('id', 'path', 'summary', 'stale');
+      
+      const symbols = await knex('symbols')
+        .whereIn('file_id', Array.from(allIds))
+        .select('file_id', 'type');
 
-      const nodes = files.map((f: any) => ({
-        id: f.id,
-        label: f.path.split('/').pop() || f.path,
-        path: f.path
-      }));
+      const nodes = files.map((f: any) => {
+        const fileSymbols = symbols.filter((s: any) => s.file_id === f.id);
+        return {
+          id: f.id,
+          label: f.path.split('/').pop() || f.path,
+          path: f.path,
+          summary: f.summary,
+          stale: !!f.stale,
+          symbolCount: fileSymbols.length,
+          breakdown: {
+            functions: fileSymbols.filter((s: any) => s.type === 'function').length,
+            classes: fileSymbols.filter((s: any) => s.type === 'class').length,
+            variables: fileSymbols.filter((s: any) => s.type === 'variable' || s.type === 'const').length,
+          }
+        };
+      });
 
       const links = edges.map((e: any) => ({
         source: e.source_id,
         target: e.target_id,
-        sourceLabel: fileMap.get(e.source_id),
-        targetLabel: fileMap.get(e.target_id)
       }));
 
       res.json({ nodes, links });
