@@ -225,6 +225,42 @@ program
   });
 
 program
+  .command('tests')
+  .description('Find and optionally run tests related to specific files')
+  .option('-f, --files <files...>', 'Source files to find tests for')
+  .option('-r, --run', 'Try to run the tests automatically', false)
+  .action(async (options) => {
+    if (!options.files || options.files.length === 0) {
+      console.log(chalk.red('❌ Please provide at least one file using --files'));
+      process.exit(1);
+    }
+
+    const spinner = ora('Finding related tests...').start();
+    try {
+      const tests = await getKiteretsu().getRelatedTests(options.files);
+      spinner.stop();
+
+      if (tests.length === 0) {
+        console.log(chalk.yellow('\n🔍 No related tests found for the specified files.'));
+        console.log(chalk.gray('Kiteretsu looks for files containing .test. or .spec. that import your changed files.'));
+      } else {
+        console.log(chalk.bold.green('\n🧪 Related Tests Found:'));
+        tests.forEach(t => console.log(chalk.white(`  ✓ ${t}`)));
+
+        if (options.run) {
+          console.log(chalk.cyan('\n🚀 Automatic test execution is coming soon!'));
+          console.log(chalk.gray('For now, please run these tests manually using your preferred test runner.'));
+        }
+      }
+      await getKiteretsu().destroy();
+      process.exit(0);
+    } catch (error: any) {
+      spinner.fail(chalk.red('Failed to find tests: ' + error.message));
+      process.exit(1);
+    }
+  });
+
+program
   .command('dashboard')
   .description('Start the Kiteretsu dashboard')
   .option('-p, --port <port>', 'Port to run the dashboard on', '3000')
@@ -317,9 +353,32 @@ program
 
         case 'antigravity':
         case 'google-antigravity':
-          await fs.outputFile(path.join(targetDir, '.agents', 'rules', 'kiteretsu.md'), contentText);
-          await fs.outputFile(path.join(targetDir, '.agents', 'workflows', 'kiteretsu.md'), `# Kiteretsu Workflow\nRegisters /kiteretsu slash command.`);
-          console.log(chalk.green('✅ Antigravity rules and workflows installed.'));
+          await fs.outputFile(path.join(targetDir, '.agents', 'rules', 'kiteretsu.md'), `---
+description: Kiteretsu Codebase Intelligence
+globs: **/*
+---
+
+# Kiteretsu Rules
+You MUST use Kiteretsu to understand the codebase context before making complex changes.
+1. Run \`kiteretsu context "<task>"\` to get the context pack.
+2. Adhere to all architectural rules returned in the pack.
+3. Check the "Blast Radius" to identify high-risk areas.`);
+          
+          await fs.outputFile(path.join(targetDir, '.agents', 'workflows', 'kiteretsu.md'), `---
+name: Kiteretsu Context
+description: Get codebase context for a task
+trigger:
+  slash_command: kiteretsu
+  arguments:
+    task:
+      description: The task you are working on
+      required: true
+---
+
+# Workflow
+1. Run \`kiteretsu context "{{task}}"\`
+2. Display the result to the user.`);
+          console.log(chalk.green('✅ Antigravity rules and workflows installed successfully.'));
           break;
 
         case 'vscode':

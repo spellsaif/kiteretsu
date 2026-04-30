@@ -79,6 +79,21 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ['task', 'result']
         }
+      },
+      {
+        name: 'get_related_tests',
+        description: 'Find test files related to specific source files',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            files: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'The source files to find tests for'
+            }
+          },
+          required: ['files']
+        }
       }
     ],
   };
@@ -121,6 +136,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       await kiteretsu.recordTaskOutcome(task, type, result, notes);
       return {
         content: [{ type: 'text', text: 'Task outcome recorded successfully.' }],
+      };
+    }
+
+    if (name === 'get_related_tests') {
+      const { files } = args as any;
+      const tests = await kiteretsu.getRelatedTests(files);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(tests, null, 2) }],
       };
     }
 

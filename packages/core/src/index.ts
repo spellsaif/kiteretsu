@@ -339,6 +339,21 @@ export class Kiteretsu {
     });
   }
 
+  async getRelatedTests(filePaths: string[]): Promise<string[]> {
+    const analyzer = await this.getAnalyzer();
+    const allTests = new Set<string>();
+
+    for (const filePath of filePaths) {
+      const fullPath = path.resolve(this.rootDir, filePath);
+      const tests = await analyzer.getRelatedTests(fullPath);
+      for (const test of tests) {
+        allTests.add(path.relative(this.rootDir, test).replace(/\\/g, '/'));
+      }
+    }
+
+    return Array.from(allTests);
+  }
+
   async destroy() {
     if (this._db) {
       await this._db.destroy();
