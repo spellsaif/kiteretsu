@@ -4,7 +4,7 @@ import path from 'path';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
-const LOG_PATH = path.resolve(process.cwd(), 'debug_log.txt');
+const LOG_PATH = path.resolve(process.cwd(), '.kiteretsu', 'debug.log');
 
 export interface SymbolInfo {
   name: string;
@@ -221,10 +221,10 @@ export class CodeParser {
         (import_spec path: (string_literal) @source)
       `;
     } else if (ext === '.rs') {
-      language = this.languages.get('rust');
-      queryString = `
-        (use_declaration argument: (scoped_identifier path: (identifier) @source))
-      `;
+      // Rust use declarations are complex (scoped_use_list, wildcards, etc.)
+      // Handled entirely by regex fallback below for reliability
+      language = null;
+      queryString = '';
     }
 
     if (queryString && language) {
@@ -249,12 +249,13 @@ export class CodeParser {
     }
 
     // --- Regex Fallback for robustness ---
-    if (imports.length === 0) {
+    // For Rust: always use regex (tree-sitter skipped above)
+    // For Python/Go: fallback when tree-sitter fails
+    if (imports.length === 0 || ext === '.rs') {
       try {
-        const content = await fs.readFile(filePath, 'utf8');
+        const fallbackContent = await fs.readFile(filePath, 'utf8');
         if (ext === '.py') {
-          // Standard: import x, y; from x import y
-          const matches = content.matchAll(/(?:from|import)\s+([\w\.]+)/g);
+          const matches = fallbackContent.matchAll(/(?:from|import)\s+([\w\.]+)/g);
           for (const match of matches) {
             const source = match[1].replace(/\./g, '/');
             if (source && source !== 'import' && source !== 'from') {
@@ -262,17 +263,24 @@ export class CodeParser {
             }
           }
         } else if (ext === '.go') {
-          // Matches: import "fmt" AND import ( "fmt" \n "net/http" )
-          const matches = content.matchAll(/import\s+(?:\(\s*|")([^" \n)]+)"/g);
-          for (const match of matches) {
+          // Single imports: import "fmt"
+          const singleMatches = fallbackContent.matchAll(/import\s+"([^"]+)"/g);
+          for (const match of singleMatches) {
             if (!imports.includes(match[1])) imports.push(match[1]);
           }
+          // Multi-line import blocks: import ( "fmt" \n "os" )
+          const blockMatches = fallbackContent.matchAll(/import\s*\(([\s\S]*?)\)/g);
+          for (const match of blockMatches) {
+            const lineMatches = match[1].matchAll(/"([^"]+)"/g);
+            for (const lineMatch of lineMatches) {
+              if (!imports.includes(lineMatch[1])) imports.push(lineMatch[1]);
+            }
+          }
         } else if (ext === '.rs') {
-          // Matches: use std::collections; use crate::models;
-          const matches = content.matchAll(/use\s+([\w:]+)/g);
-          for (const match of matches) {
-            const source = match[1].split('::')[0];
-            if (source && !imports.includes(source)) imports.push(source);
+          // Capture full local use paths: crate::X::Y, self::X, super::X
+          const localMatches = fallbackContent.matchAll(/use\s+((?:crate|self|super)(?:::\w+)+)/g);
+          for (const match of localMatches) {
+            if (!imports.includes(match[1])) imports.push(match[1]);
           }
         }
       } catch (e) {}

@@ -133,49 +133,79 @@ export class Kiteretsu {
       .where({ source_type: 'file', source_id: fileId, relation: 'imports' })
       .delete();
 
+    const fileExt = path.extname(fullPath);
+
     for (const sourceRaw of importSources) {
       let targetPath: string | null = null;
-      // Clean source path: remove JS/TS extensions that might be there for ESM compatibility
-      const source = sourceRaw.replace(/\.(js|jsx|ts|tsx)$/, '');
 
-      if (source.startsWith('.')) {
-        const sourceDir = path.dirname(fullPath);
-        let targetBase = path.resolve(sourceDir, source);
-        targetPath = this.resolveFilePath(targetBase);
-      } else {
-        // Find the package name (could be scoped)
-        let packageName = "";
-        let subPath = "";
-        
-        if (source.startsWith('@')) {
-          const parts = source.split('/');
-          packageName = parts.slice(0, 2).join('/');
-          subPath = parts.slice(2).join('/');
+      if (['.ts', '.tsx', '.js', '.jsx'].includes(fileExt)) {
+        // ── JS/TS Resolution ──
+        const source = sourceRaw.replace(/\.(js|jsx|ts|tsx)$/, '');
+        if (source.startsWith('.')) {
+          targetPath = this.resolveFilePath(path.resolve(path.dirname(fullPath), source));
         } else {
-          const parts = source.split('/');
-          packageName = parts[0];
-          subPath = parts.slice(1).join('/');
-        }
-
-        const packageDir = this.packageMap.get(packageName);
-        if (packageDir) {
-          const srcDir = path.join(packageDir, 'src');
-          if (subPath) {
-            targetPath = this.resolveFilePath(path.join(srcDir, subPath)) || 
-                         this.resolveFilePath(path.join(packageDir, subPath));
+          let packageName = '';
+          let subPath = '';
+          if (source.startsWith('@')) {
+            const parts = source.split('/');
+            packageName = parts.slice(0, 2).join('/');
+            subPath = parts.slice(2).join('/');
           } else {
-            targetPath = this.resolveFilePath(srcDir) || this.resolveFilePath(packageDir);
+            const parts = source.split('/');
+            packageName = parts[0];
+            subPath = parts.slice(1).join('/');
+          }
+          const packageDir = this.packageMap.get(packageName);
+          if (packageDir) {
+            const srcDir = path.join(packageDir, 'src');
+            if (subPath) {
+              targetPath = this.resolveFilePath(path.join(srcDir, subPath)) || 
+                           this.resolveFilePath(path.join(packageDir, subPath));
+            } else {
+              targetPath = this.resolveFilePath(srcDir) || this.resolveFilePath(packageDir);
+            }
+          }
+          if (!targetPath) {
+            targetPath = this.resolveFilePath(path.resolve(this.rootDir, source));
           }
         }
-
+      } else if (fileExt === '.py') {
+        // ── Python Resolution ──
+        // sourceRaw is like 'models/user' (dots already converted to slashes)
+        targetPath = this.resolveFilePath(path.resolve(this.rootDir, sourceRaw));
         if (!targetPath) {
-          // Fallback to root-relative (legacy)
-          targetPath = this.resolveFilePath(path.resolve(this.rootDir, source));
+          targetPath = this.resolveFilePath(path.resolve(path.dirname(fullPath), sourceRaw));
+        }
+      } else if (fileExt === '.rs') {
+        // ── Rust Resolution ──
+        // sourceRaw is like 'crate::models::user', 'self::helpers', 'super::config'
+        const rustPath = sourceRaw.replace(/::/g, '/');
+        if (sourceRaw.startsWith('crate')) {
+          targetPath = this.resolveFilePath(path.resolve(this.rootDir, rustPath.replace(/^crate/, 'src')));
+        } else if (sourceRaw.startsWith('super')) {
+          targetPath = this.resolveFilePath(path.resolve(path.dirname(fullPath), rustPath.replace(/^super/, '..')));
+        } else if (sourceRaw.startsWith('self')) {
+          targetPath = this.resolveFilePath(path.resolve(path.dirname(fullPath), rustPath.replace(/^self/, '.')));
+        }
+      } else if (fileExt === '.go') {
+        // ── Go Resolution ──
+        // sourceRaw is like 'github.com/user/project/internal/api' or 'fmt'
+        if (sourceRaw.includes('/')) {
+          const goMod = this.getGoModuleName();
+          if (goMod && sourceRaw.startsWith(goMod)) {
+            const localPath = sourceRaw.slice(goMod.length + 1);
+            targetPath = this.resolveFilePath(path.resolve(this.rootDir, localPath));
+          }
+        }
+      } else {
+        // ── Generic: try root-relative and file-relative ──
+        targetPath = this.resolveFilePath(path.resolve(this.rootDir, sourceRaw));
+        if (!targetPath) {
+          targetPath = this.resolveFilePath(path.resolve(path.dirname(fullPath), sourceRaw));
         }
       }
 
       if (targetPath) {
-        // Normalize targetPath for consistent comparison
         targetPath = path.resolve(targetPath).replace(/\\/g, '/');
         if (process.platform === 'win32' && /^[a-z]:/i.test(targetPath)) {
           targetPath = targetPath[0].toLowerCase() + targetPath.slice(1);
@@ -227,23 +257,13 @@ export class Kiteretsu {
     const configPath = path.join(this.rootDir, '.kiteretsu', 'config.json');
     if (!fs.existsSync(configPath)) {
       await fs.ensureDir(path.dirname(configPath));
+      const excludes = this.detectProjectExcludes();
       await fs.writeJson(configPath, {
         name: path.basename(this.rootDir),
         version: "1.0.0",
         indexing: {
           include: ["**/*"],
-          exclude: [
-            "**/node_modules/**",
-            "**/dist/**",
-            "**/build/**",
-            "**/.kiteretsu/**",
-            "**/.git/**",
-            "**/scratch/**",
-            "**/temp/**",
-            "**/pnpm-lock.yaml",
-            "**/package-lock.json",
-            "**/yarn.lock"
-          ]
+          exclude: excludes
         }
       }, { spaces: 2 });
     }
@@ -293,7 +313,8 @@ export class Kiteretsu {
       try {
         await this.indexFile(fullPath);
       } catch (error: any) {
-        fs.appendFileSync(path.resolve(this.rootDir, 'packages/core/debug_log.txt'), `[Indexer] Error indexing ${relativePath}: ${error.message}\n`);
+        const debugLog = path.resolve(this.rootDir, '.kiteretsu', 'debug.log');
+        try { fs.appendFileSync(debugLog, `[Indexer] Error indexing ${relativePath}: ${error.message}\n`); } catch {} 
       }
     }
 
@@ -354,12 +375,83 @@ export class Kiteretsu {
       if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
         return candidate;
       }
-      const indexCandidate = path.join(targetBase, 'index' + ext);
-      if (fs.existsSync(indexCandidate) && fs.statSync(indexCandidate).isFile()) {
-        return indexCandidate;
+      // Language-specific directory entry points
+      const dirCandidates = [
+        path.join(targetBase, 'index' + ext),      // JS/TS
+        path.join(targetBase, '__init__' + ext),    // Python
+        path.join(targetBase, 'mod' + ext),         // Rust
+      ];
+      for (const dc of dirCandidates) {
+        if (fs.existsSync(dc) && fs.statSync(dc).isFile()) {
+          return dc;
+        }
       }
     }
     return null;
+  }
+
+  /** Detect project type from marker files and return appropriate exclude patterns. */
+  private detectProjectExcludes(): string[] {
+    const base = [
+      '**/.kiteretsu/**',
+      '**/.git/**',
+      '**/scratch/**',
+      '**/temp/**',
+    ];
+
+    // JS/TS
+    if (fs.existsSync(path.join(this.rootDir, 'package.json'))) {
+      base.push('**/node_modules/**', '**/dist/**', '**/build/**',
+                '**/pnpm-lock.yaml', '**/package-lock.json', '**/yarn.lock');
+    }
+    // Rust
+    if (fs.existsSync(path.join(this.rootDir, 'Cargo.toml'))) {
+      base.push('**/target/**');
+    }
+    // Python
+    if (fs.existsSync(path.join(this.rootDir, 'pyproject.toml')) ||
+        fs.existsSync(path.join(this.rootDir, 'requirements.txt')) ||
+        fs.existsSync(path.join(this.rootDir, 'setup.py'))) {
+      base.push('**/__pycache__/**', '**/.venv/**', '**/venv/**',
+                '**/*.pyc', '**/*.egg-info/**');
+    }
+    // Go
+    if (fs.existsSync(path.join(this.rootDir, 'go.mod'))) {
+      base.push('**/vendor/**');
+    }
+    // Java/Kotlin
+    if (fs.existsSync(path.join(this.rootDir, 'pom.xml')) ||
+        fs.existsSync(path.join(this.rootDir, 'build.gradle')) ||
+        fs.existsSync(path.join(this.rootDir, 'build.gradle.kts'))) {
+      base.push('**/target/**', '**/.gradle/**', '**/build/**');
+    }
+    // Swift
+    if (fs.existsSync(path.join(this.rootDir, 'Package.swift'))) {
+      base.push('**/.build/**');
+    }
+    // Ruby
+    if (fs.existsSync(path.join(this.rootDir, 'Gemfile'))) {
+      base.push('**/vendor/bundle/**');
+    }
+
+    return [...new Set(base)]; // Deduplicate
+  }
+
+  /** Read Go module name from go.mod (cached). */
+  private _goModuleName: string | null | undefined = undefined;
+  private getGoModuleName(): string | null {
+    if (this._goModuleName !== undefined) return this._goModuleName;
+    const goModPath = path.join(this.rootDir, 'go.mod');
+    if (fs.existsSync(goModPath)) {
+      try {
+        const content = fs.readFileSync(goModPath, 'utf8');
+        const match = content.match(/^module\s+(.+)$/m);
+        this._goModuleName = match ? match[1].trim() : null;
+      } catch { this._goModuleName = null; }
+    } else {
+      this._goModuleName = null;
+    }
+    return this._goModuleName;
   }
 
   async getContextPack(task: string) {
