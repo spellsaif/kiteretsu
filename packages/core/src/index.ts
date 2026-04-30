@@ -19,7 +19,12 @@ export class Kiteretsu {
   private config: KiteretsuConfig;
 
   constructor(config: KiteretsuConfig) {
-    this.rootDir = config.rootDir;
+    // Normalize rootDir for consistent path comparisons (especially on Windows)
+    this.rootDir = path.resolve(config.rootDir).replace(/\\/g, '/');
+    // Ensure case consistency for drive letters on Windows
+    if (process.platform === 'win32' && /^[a-z]:/i.test(this.rootDir)) {
+      this.rootDir = this.rootDir[0].toLowerCase() + this.rootDir.slice(1);
+    }
     this.config = config;
   }
 
@@ -31,9 +36,23 @@ export class Kiteretsu {
     return this._db;
   }
 
+  async getAnalyzer(): Promise<CodeAnalyzer> {
+    if (!this._analyzer) {
+      const { CodeAnalyzer } = await import('./analyzer.js');
+      this._analyzer = new CodeAnalyzer(this.rootDir, this.db);
+    }
+    return this._analyzer;
+  }
+
+  // Backwards compatibility for the property access if needed, 
+  // but recommended to use getAnalyzer()
+  get analyzer(): CodeAnalyzer {
+    if (!this._analyzer) throw new Error("Analyzer not initialized. Call init() or getAnalyzer() first.");
+    return this._analyzer;
+  }
+
   get scanner(): Scanner {
     if (!this._scanner) {
-      // Read exclusions from config.json if available
       const configPath = path.join(this.rootDir, '.kiteretsu', 'config.json');
       let scanOptions: { rootDir: string; include?: string[]; exclude?: string[] } = { rootDir: this.rootDir };
 
@@ -60,12 +79,107 @@ export class Kiteretsu {
     return this._parser;
   }
 
-  private async getAnalyzer(): Promise<CodeAnalyzer> {
-    if (!this._analyzer) {
-      const { CodeAnalyzer } = await import('./analyzer.js');
-      this._analyzer = new CodeAnalyzer(this.rootDir, this.db);
+  async indexFile(filePath: string): Promise<void> {
+    const knex = this.db.getKnex();
+    
+    // Normalize incoming path
+    let fullPath = path.resolve(filePath).replace(/\\/g, '/');
+    if (process.platform === 'win32' && /^[a-z]:/i.test(fullPath)) {
+      fullPath = fullPath[0].toLowerCase() + fullPath.slice(1);
     }
-    return this._analyzer;
+
+    const relativePath = path.relative(this.rootDir, fullPath).replace(/\\/g, '/');
+    const hash = await this.scanner.getFileHash(fullPath);
+
+    // 1. Register file
+    const existingFile = await knex('files').where({ path: relativePath }).first();
+    let fileId: number;
+    if (!existingFile) {
+      [fileId] = await knex('files').insert({
+        path: relativePath,
+        hash: hash,
+        stale: false,
+        last_indexed: knex.fn.now()
+      });
+    } else {
+      fileId = existingFile.id;
+      await knex('files').where({ id: fileId }).update({
+        hash: hash,
+        stale: false,
+        last_indexed: knex.fn.now()
+      });
+    }
+
+    // 2. Parse symbols & imports
+    const parser = await this.getParser();
+    
+    // Symbols
+    const symbols = await parser.parseSymbols(fullPath);
+    await knex('symbols').where({ file_id: fileId }).delete();
+    for (const sym of symbols) {
+      await knex('symbols').insert({
+        name: sym.name,
+        type: sym.type,
+        file_id: fileId,
+        start_line: sym.startLine,
+        end_line: sym.endLine
+      });
+    }
+
+    // Imports
+    const importSources = await parser.parseImports(fullPath);
+    await knex('graph_edges')
+      .where({ source_type: 'file', source_id: fileId, relation: 'imports' })
+      .delete();
+
+    for (const source of importSources) {
+      let targetPath: string | null = null;
+
+      if (source.startsWith('.')) {
+        const sourceDir = path.dirname(fullPath);
+        let targetBase = path.resolve(sourceDir, source);
+        targetPath = this.resolveFilePath(targetBase);
+      } else {
+        targetPath = this.resolveFilePath(path.resolve(this.rootDir, source));
+      }
+
+      if (targetPath) {
+        let targetRelative = path.relative(this.rootDir, targetPath).replace(/\\/g, '/');
+        if (targetRelative.startsWith('./')) targetRelative = targetRelative.slice(2);
+        
+        const target = await knex('files')
+          .whereRaw('LOWER(path) = ?', [targetRelative.toLowerCase()])
+          .first();
+        
+        if (target) {
+          await knex('graph_edges').insert({
+            source_type: 'file',
+            source_id: fileId,
+            relation: 'imports',
+            target_type: 'file',
+            target_id: target.id,
+            confidence: 0.8,
+            provenance: 'static_analysis'
+          });
+        }
+      }
+    }
+  }
+
+  async removeFile(filePath: string) {
+    const knex = this.db.getKnex();
+    let fullPath = path.resolve(filePath).replace(/\\/g, '/');
+    if (process.platform === 'win32' && /^[a-z]:/i.test(fullPath)) {
+      fullPath = fullPath[0].toLowerCase() + fullPath.slice(1);
+    }
+    
+    const relativePath = path.relative(this.rootDir, fullPath).replace(/\\/g, '/');
+    const file = await knex('files').where({ path: relativePath }).first();
+
+    if (file) {
+      // Cascade deletion handles graph_edges and symbols
+      await knex('files').where({ id: file.id }).delete();
+    }
   }
 
   async init() {
@@ -136,69 +250,20 @@ export class Kiteretsu {
 
     for (const relativePath of files) {
       const fullPath = path.resolve(this.rootDir, relativePath);
-      const ext = path.extname(fullPath);
-
-      if (!['.ts', '.tsx', '.js', '.jsx'].includes(ext)) continue;
-
-      const fileId = fileMap.get(relativePath);
-      if (!fileId) continue;
-
+      
       try {
-        const parser = await this.getParser();
-
-        // ── Symbols ──
-        const symbols = await parser.parseSymbols(fullPath);
-        await knex('symbols').where({ file_id: fileId }).delete();
-        for (const sym of symbols) {
-          await knex('symbols').insert({
-            name: sym.name,
-            type: sym.type,
-            file_id: fileId,
-            start_line: sym.startLine,
-            end_line: sym.endLine
-          });
-          totalSymbols++;
-        }
-
-        // ── Import Edges ──
-        const importSources = await parser.parseImports(fullPath);
-        await knex('graph_edges')
-          .where({ source_type: 'file', source_id: fileId, relation: 'imports' })
-          .delete();
-
-        for (const source of importSources) {
-          if (!source.startsWith('.')) continue;
-
-          const sourceDir = path.dirname(fullPath);
-          let targetBase = path.resolve(sourceDir, source);
-
-          // Handle ESM style imports: .js/.jsx → .ts/.tsx
-          if (targetBase.endsWith('.js')) targetBase = targetBase.slice(0, -3);
-          if (targetBase.endsWith('.jsx')) targetBase = targetBase.slice(0, -4);
-
-          const resolvedPath = this.resolveFilePath(targetBase);
-          if (!resolvedPath) continue;
-
-          const targetRelativePath = path.relative(this.rootDir, resolvedPath).replace(/\\/g, '/');
-          const targetId = fileMap.get(targetRelativePath);
-
-          if (targetId) {
-            await knex('graph_edges').insert({
-              source_type: 'file',
-              source_id: fileId,
-              relation: 'imports',
-              target_type: 'file',
-              target_id: targetId,
-              confidence: 1.0,
-              provenance: 'static_analysis'
-            });
-            totalEdges++;
-          }
-        }
+        await this.indexFile(fullPath);
+        // We could count here but indexFile handles the DB directly
       } catch (error) {
         // Silently skip unparseable files
       }
     }
+
+    // Refresh counts
+    const symbolCount = await knex('symbols').count('id as count').first();
+    const edgeCount = await knex('graph_edges').count('id as count').first();
+    totalSymbols = Number(symbolCount?.count || 0);
+    totalEdges = Number(edgeCount?.count || 0);
 
     // Mark all indexed files as not stale
     const allIds = Array.from(fileMap.values());
@@ -211,7 +276,11 @@ export class Kiteretsu {
 
   /** Resolve a base path (without extension) to an actual file on disk. */
   private resolveFilePath(targetBase: string): string | null {
-    const exts = ['', '.ts', '.tsx', '.js', '.jsx'];
+    const exts = [
+      '', '.ts', '.tsx', '.js', '.jsx', 
+      '.py', '.go', '.rs', '.java', '.rb', 
+      '.c', '.cpp', '.cs', '.php', '.swift'
+    ];
     for (const ext of exts) {
       const candidate = targetBase + ext;
       if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
@@ -227,95 +296,102 @@ export class Kiteretsu {
 
   async getContextPack(task: string) {
     const knex = this.db.getKnex();
-    const keywords = task.toLowerCase().split(/\s+/).filter(k => k.length > 2);
+    
+    // 1. Semantic Tokenization
+    const STOP_WORDS = new Set(['implement', 'create', 'update', 'delete', 'change', 'fix', 'add', 'remove', 'the', 'and', 'for', 'with', 'from', 'this', 'that', 'should', 'would', 'could', 'want', 'need', 'task', 'description', 'issue', 'bug', 'feature']);
+    const rawKeywords = task.toLowerCase()
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter(k => k.length > 2 && !STOP_WORDS.has(k));
 
-    // Guard: if no useful keywords, return early
-    if (keywords.length === 0) {
-      return {
-        task,
-        strategy: "No actionable keywords found in the task description.",
-        read_first: [],
-        blast_radius: [],
-        tests_to_run: [],
-        optional_read: [],
-        rules: [],
-        warnings: ["Task description is too short or vague. Try a more specific description."]
-      };
+    if (rawKeywords.length === 0) {
+      return { task, strategy: "No actionable keywords found.", read_first: [], blast_radius: [], tests_to_run: [], optional_read: [], rules: [], warnings: ["Task description too short."] };
     }
 
-    // Smarter search: prioritize filename matches, then symbol matches
-    const keywordResults = await knex('files')
-      .leftJoin('symbols', 'files.id', 'symbols.file_id')
-      .where((builder) => {
-        for (const kw of keywords) {
-          builder.orWhere('files.path', 'like', `%${kw}%`);
-          builder.orWhere('symbols.name', 'like', `%${kw}%`);
-        }
-      })
-      .select('files.path', 'files.id', 'files.summary')
-      .select(knex.raw(`
-        CASE
-          WHEN files.path LIKE ? THEN 100
-          WHEN files.path LIKE ? THEN 50
-          ELSE 1
-        END as rank
-      `, [`%${keywords[0]}%`, `%${keywords[keywords.length - 1]}%`]))
-      .distinct()
-      .orderBy('rank', 'desc')
-      .limit(10);
+    // 2. IDF Calculation (Significance)
+    const totalFiles = (await knex('files').count('id as count').first())?.count || 1;
+    const keywordSignificance = new Map<string, number>();
 
-    const candidateFiles = keywordResults.map(f => ({
-      path: f.path,
-      summary: f.summary || "No summary available."
-    }));
+    for (const kw of rawKeywords) {
+      const count = (await knex('files').where('path', 'like', `%${kw}%`).count('id as count').first())?.count || 1;
+      // Inverse Document Frequency: higher for rarer words
+      const idf = Math.log(Number(totalFiles) / (Number(count) + 1)) + 1;
+      keywordSignificance.set(kw, idf);
+    }
 
-    const rules = await knex('rules')
-      .where((builder) => {
-        for (const kw of keywords) {
-          builder.orWhere('name', 'like', `%${kw}%`);
-          builder.orWhere('description', 'like', `%${kw}%`);
-        }
-      });
+    // 3. Multi-Field Weighted Scoring
+    const scores = new Map<number, { score: number; path: string; summary: string; stale: boolean }>();
+    
+    for (const kw of rawKeywords) {
+      const idf = keywordSignificance.get(kw) || 1;
 
-    // Calculate Blast Radius & Test Mapping for top files
-    const blastRadius: string[] = [];
-    const testsToRun: string[] = [];
-    const analyzer = await this.getAnalyzer();
+      // Path matches (Weight: 10.0)
+      const pathMatches = await knex('files').where('path', 'like', `%${kw}%`).select('id', 'path', 'summary', 'stale');
+      for (const f of pathMatches) {
+        const current = scores.get(f.id) || { score: 0, path: f.path, summary: f.summary, stale: !!f.stale };
+        current.score += 10.0 * idf;
+        scores.set(f.id, current);
+      }
 
-    for (const file of candidateFiles.slice(0, 5)) {
-      try {
-        const fullPath = path.join(this.rootDir, file.path);
+      // Symbol matches (Weight: 5.0)
+      const symbolMatches = await knex('symbols').join('files', 'symbols.file_id', 'files.id')
+        .where('symbols.name', 'like', `%${kw}%`).select('files.id', 'files.path', 'files.summary', 'files.stale');
+      for (const f of symbolMatches) {
+        const current = scores.get(f.id) || { score: 0, path: f.path, summary: f.summary, stale: !!f.stale };
+        current.score += 5.0 * idf;
+        scores.set(f.id, current);
+      }
 
-        const radius = await analyzer.getBlastRadius(fullPath);
-        for (const related of radius) {
-          const relPath = path.relative(this.rootDir, related).replace(/\\/g, '/');
-          if (!blastRadius.includes(relPath) && !candidateFiles.some(c => c.path === relPath)) {
-            blastRadius.push(relPath);
-          }
-        }
-
-        const tests = await analyzer.getRelatedTests(fullPath);
-        for (const test of tests) {
-          const relPath = path.relative(this.rootDir, test).replace(/\\/g, '/');
-          if (!testsToRun.includes(relPath)) testsToRun.push(relPath);
-        }
-      } catch (e) {
-        // file might not exist or be parseable by TS
+      // Summary matches (Weight: 2.0)
+      const summaryMatches = await knex('files').where('summary', 'like', `%${kw}%`).select('id', 'path', 'summary', 'stale');
+      for (const f of summaryMatches) {
+        const current = scores.get(f.id) || { score: 0, path: f.path, summary: f.summary, stale: !!f.stale };
+        current.score += 2.0 * idf;
+        scores.set(f.id, current);
       }
     }
 
+    const topCandidates = Array.from(scores.entries())
+      .sort((a, b) => b[1].score - a[1].score)
+      .slice(0, 7) // Increased candidate pool
+      .map(([id, data]) => ({ id, ...data }));
+
+    if (topCandidates.length === 0) {
+      return { task, strategy: "No relevant files found.", read_first: [], blast_radius: [], tests_to_run: [], optional_read: [], rules: [], warnings: [] };
+    }
+
+    // 2. Build Intelligence Accretion (Blast Radius + Rules + Tests)
+    const analyzer = await this.getAnalyzer();
+    const blastRadiusFiles = new Set<string>();
+    const testsToRun = new Set<string>();
+
+    for (const f of topCandidates) {
+      const fullPath = path.resolve(this.rootDir, f.path);
+      const radius = await analyzer.getBlastRadius(fullPath);
+      radius.forEach(r => {
+        const rel = path.relative(this.rootDir, r).replace(/\\/g, '/');
+        if (!topCandidates.some(tc => tc.path === rel)) blastRadiusFiles.add(rel);
+      });
+
+      const tests = await analyzer.getRelatedTests(fullPath);
+      tests.forEach(t => testsToRun.add(path.relative(this.rootDir, t).replace(/\\/g, '/')));
+    }
+
+    const rules = await knex('rules').where(builder => {
+      for (const kw of rawKeywords) {
+        builder.orWhere('name', 'like', `%${kw}%`).orWhere('description', 'like', `%${kw}%`);
+      }
+    });
+
     return {
       task,
-      strategy: "Determine your own strategy based on the files and blast radius provided.",
-      read_first: candidateFiles.map(f => ({
-        path: f.path,
-        summary: f.summary
-      })),
-      blast_radius: blastRadius,
-      tests_to_run: testsToRun,
+      strategy: `Context centered on ${topCandidates[0].path.split('/').pop()}`,
+      read_first: topCandidates.map(f => ({ path: f.path, summary: f.summary || "No summary" })),
+      blast_radius: Array.from(blastRadiusFiles).slice(0, 10),
+      tests_to_run: Array.from(testsToRun).slice(0, 5),
       optional_read: [],
-      rules: rules.map(r => r.name + ': ' + r.description),
-      warnings: candidateFiles.length === 0 ? ["No relevant files found. Try a more specific task description."] : []
+      rules: rules.map(r => `${r.name}: ${r.description}`),
+      warnings: topCandidates.some(f => f.stale) ? ["Codebase index is stale. Run 'kiteretsu index' to refresh."] : []
     };
   }
 
