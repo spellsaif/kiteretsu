@@ -105,15 +105,15 @@ export function startServer(rootDir: string, port: number = 3000) {
     try {
       const knex = kiteretsu.db.getKnex();
       const files = await knex('files').select('id', 'path', 'summary', 'stale').limit(50);
-      
+
       const fileIds = files.map((f: any) => f.id);
       const symbols = await knex('symbols').whereIn('file_id', fileIds);
-      
+
       const memoryGraph = files.map((f: any) => ({
         ...f,
         symbols: symbols.filter((s: any) => s.file_id === f.id)
       }));
-      
+
       res.json(memoryGraph);
     } catch (error: any) {
       res.status(500).json({ error: error.message });

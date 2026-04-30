@@ -1,16 +1,16 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import './index.css';
 
 const API = 'http://localhost:3000/api';
 
 // ─── Icons (inline SVGs to avoid extra deps) ───
 const Icons = {
-  grid: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>,
-  graph: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98"/></svg>,
-  files: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>,
-  shield: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
-  terminal: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>,
-  settings: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
+  grid: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>,
+  graph: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98" /></svg>,
+  files: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /></svg>,
+  shield: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>,
+  terminal: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" /></svg>,
+  settings: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>,
 };
 
 type Tab = 'overview' | 'graph' | 'memory' | 'tasks' | 'rules' | 'settings';
@@ -144,8 +144,24 @@ function OverviewTab({ stats, tasks, rules, edges }: any) {
 // ─── Dependency Graph (Canvas-based force layout) ───
 function GraphTab({ graph }: { graph: GraphData }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const animRef = useRef<number>(0);
-  const nodesRef = useRef<{ id: number; label: string; path: string; x: number; y: number; vx: number; vy: number }[]>([]);
+  const nodesRef = useRef<any[]>([]);
+  const hoveredNodeRef = useRef<any>(null);
+  const dragNodeRef = useRef<any>(null);
+
+  // State only for UI overlays (Tooltips)
+  const [tooltipNode, setTooltipNode] = useState<any>(null);
+
+  const impactMap = useMemo(() => {
+    const counts: Record<number, number> = {};
+    graph.nodes.forEach(n => counts[n.id] = 0);
+    graph.links.forEach(l => {
+      counts[l.source] = (counts[l.source] || 0) + 1;
+      counts[l.target] = (counts[l.target] || 0) + 1;
+    });
+    return counts;
+  }, [graph]);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -153,120 +169,128 @@ function GraphTab({ graph }: { graph: GraphData }) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const W = canvas.width;
-    const H = canvas.height;
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.width / dpr;
+    const H = canvas.height / dpr;
     const nodes = nodesRef.current;
     const links = graph.links;
 
     // Physics step
-    for (const node of nodes) {
-      // Repulsion between all nodes
-      for (const other of nodes) {
-        if (node.id === other.id) continue;
-        const dx = node.x - other.x;
-        const dy = node.y - other.y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const force = 800 / (dist * dist);
-        node.vx += (dx / dist) * force;
-        node.vy += (dy / dist) * force;
+    for (let i = 0; i < 3; i++) {
+      for (const node of nodes) {
+        // ATOMIC LOCK: Check refs directly for zero-latency freezing
+        if (node === dragNodeRef.current || node === hoveredNodeRef.current) {
+          node.vx = 0;
+          node.vy = 0;
+          continue;
+        }
+
+        // Repulsion
+        for (const other of nodes) {
+          if (node.id === other.id) continue;
+          const dx = node.x - other.x;
+          const dy = node.y - other.y;
+          const distSq = dx * dx + dy * dy || 1;
+          const force = 600 / distSq;
+          node.vx += (dx / Math.sqrt(distSq)) * force;
+          node.vy += (dy / Math.sqrt(distSq)) * force;
+        }
+
+        // Center gravity
+        node.vx += (W / 2 - node.x) * 0.005;
+        node.vy += (H / 2 - node.y) * 0.005;
       }
-      // Center gravity
-      node.vx += (W / 2 - node.x) * 0.01;
-      node.vy += (H / 2 - node.y) * 0.01;
-    }
 
-    // Attraction along edges
-    for (const link of links) {
-      const a = nodes.find(n => n.id === link.source);
-      const b = nodes.find(n => n.id === link.target);
-      if (!a || !b) continue;
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const force = (dist - 120) * 0.02;
-      a.vx += (dx / dist) * force;
-      a.vy += (dy / dist) * force;
-      b.vx -= (dx / dist) * force;
-      b.vy -= (dy / dist) * force;
-    }
+      // Attraction
+      for (const link of links) {
+        const a = nodes.find(n => n.id === link.source);
+        const b = nodes.find(n => n.id === link.target);
+        if (!a || !b) continue;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        const force = (dist - 140) * 0.015;
+        const fx = (dx / dist) * force;
+        const fy = (dy / dist) * force;
+        if (a !== dragNodeRef.current && a !== hoveredNodeRef.current) { a.vx += fx; a.vy += fy; }
+        if (b !== dragNodeRef.current && b !== hoveredNodeRef.current) { b.vx -= fx; b.vy -= fy; }
+      }
 
-    // Apply velocity with damping
-    for (const node of nodes) {
-      node.vx *= 0.85;
-      node.vy *= 0.85;
-      node.x += node.vx;
-      node.y += node.vy;
-      // Bounds
-      node.x = Math.max(60, Math.min(W - 60, node.x));
-      node.y = Math.max(30, Math.min(H - 30, node.y));
+      for (const node of nodes) {
+        node.vx *= 0.8;
+        node.vy *= 0.8;
+        node.x += node.vx;
+        node.y += node.vy;
+      }
     }
 
     // Draw
     ctx.clearRect(0, 0, W, H);
 
-    // Edges
-    ctx.strokeStyle = 'rgba(99, 102, 241, 0.25)';
-    ctx.lineWidth = 1;
-    for (const link of links) {
+    links.forEach(link => {
       const a = nodes.find(n => n.id === link.source);
       const b = nodes.find(n => n.id === link.target);
-      if (!a || !b) continue;
+      if (!a || !b) return;
+
+      const isRelated = hoveredNodeRef.current && (link.source === hoveredNodeRef.current.id || link.target === hoveredNodeRef.current.id);
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.lineTo(b.x, b.y);
+      ctx.lineWidth = isRelated ? 2 : 1;
+      ctx.strokeStyle = isRelated ? '#6366f1' : 'rgba(99, 102, 241, 0.1)';
       ctx.stroke();
+    });
 
-      // Arrow
-      const angle = Math.atan2(b.y - a.y, b.x - a.x);
-      const arrowX = b.x - Math.cos(angle) * 18;
-      const arrowY = b.y - Math.sin(angle) * 18;
-      ctx.fillStyle = 'rgba(99, 102, 241, 0.4)';
-      ctx.beginPath();
-      ctx.moveTo(arrowX, arrowY);
-      ctx.lineTo(arrowX - 6 * Math.cos(angle - 0.4), arrowY - 6 * Math.sin(angle - 0.4));
-      ctx.lineTo(arrowX - 6 * Math.cos(angle + 0.4), arrowY - 6 * Math.sin(angle + 0.4));
-      ctx.fill();
-    }
+    nodes.forEach(node => {
+      const impact = impactMap[node.id] || 0;
+      const radius = 10 + Math.min(impact * 2, 25);
+      const isHovered = hoveredNodeRef.current?.id === node.id;
+      const isRelated = hoveredNodeRef.current && (graph.links.some(l => (l.source === hoveredNodeRef.current.id && l.target === node.id) || (l.target === hoveredNodeRef.current.id && l.source === node.id)));
 
-    // Nodes
-    for (const node of nodes) {
+      if (isHovered || impact > 5) {
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = '#6366f1';
+      }
+
       ctx.beginPath();
-      ctx.arc(node.x, node.y, 14, 0, Math.PI * 2);
-      ctx.fillStyle = '#111113';
+      ctx.arc(node.x, node.y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = isHovered || isRelated ? '#6366f1' : '#1e1e22';
       ctx.fill();
-      ctx.strokeStyle = '#6366f1';
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = isHovered || isRelated ? '#fff' : '#6366f1';
+      ctx.lineWidth = isHovered ? 3 : 1.5;
       ctx.stroke();
+      ctx.shadowBlur = 0;
 
-      // Label
-      ctx.fillStyle = '#fafafa';
-      ctx.font = '11px Inter, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(node.label, node.x, node.y + 28);
-    }
+      if (isHovered || isRelated || impact > 3 || nodes.length < 15) {
+        ctx.fillStyle = isHovered ? '#fff' : '#a1a1aa';
+        ctx.font = `${isHovered ? 'bold ' : ''}12px Inter, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText(node.label, node.x, node.y + radius + 18);
+      }
+    });
 
     animRef.current = requestAnimationFrame(draw);
-  }, [graph]);
+  }, [graph, impactMap]);
 
   useEffect(() => {
     if (graph.nodes.length === 0) return;
-
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const rect = canvas.parentElement?.getBoundingClientRect();
-    canvas.width = rect?.width || 900;
-    canvas.height = 500;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * window.devicePixelRatio;
+    canvas.height = 500 * window.devicePixelRatio;
+    const ctx = canvas.getContext('2d');
+    ctx?.scale(window.devicePixelRatio, window.devicePixelRatio);
 
-    // Initialize positions in a circle
-    const cx = canvas.width / 2;
-    const cy = canvas.height / 2;
-    const r = Math.min(cx, cy) * 0.6;
+    const dpr = window.devicePixelRatio || 1;
+    const logicalW = canvas.width / dpr;
+    const logicalH = canvas.height / dpr;
 
     nodesRef.current = graph.nodes.map((n, i) => ({
       ...n,
-      x: cx + r * Math.cos((2 * Math.PI * i) / graph.nodes.length),
-      y: cy + r * Math.sin((2 * Math.PI * i) / graph.nodes.length),
+      x: logicalW / 4 + Math.random() * (logicalW / 2),
+      y: logicalH / 4 + Math.random() * (logicalH / 2),
       vx: 0,
       vy: 0,
     }));
@@ -275,23 +299,72 @@ function GraphTab({ graph }: { graph: GraphData }) {
     return () => cancelAnimationFrame(animRef.current);
   }, [graph, draw]);
 
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!canvasRef.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    if (dragNodeRef.current) {
+      dragNodeRef.current.x = x;
+      dragNodeRef.current.y = y;
+      return;
+    }
+
+    const hit = nodesRef.current.find(n => {
+      const dx = n.x - x;
+      const dy = n.y - y;
+      return Math.sqrt(dx * dx + dy * dy) < 25; // Increased capture radius
+    });
+
+    hoveredNodeRef.current = hit || null;
+    setTooltipNode(hit || null); // Update state only for UI overlay
+  };
+
+  const handleMouseDown = () => {
+    if (hoveredNodeRef.current) dragNodeRef.current = hoveredNodeRef.current;
+  };
+
+  const handleMouseUp = () => {
+    dragNodeRef.current = null;
+  };
+
   return (
-    <div>
+    <div ref={containerRef}>
       <div className="page-header">
-        <h2>Dependency Graph</h2>
-        <p>{graph.nodes.length} files · {graph.links.length} connections</p>
+        <h2>Impact Analysis Graph</h2>
+        <p>Interactive dependency visualization · {graph.nodes.length} nodes · {graph.links.length} edges</p>
       </div>
 
-      {graph.nodes.length > 0 ? (
-        <div className="graph-container">
-          <canvas ref={canvasRef} style={{ width: '100%', height: 500 }} />
-          <div className="graph-legend">
-            <span><span className="line" /> imports</span>
+      <div className="graph-card" style={{ position: 'relative', overflow: 'hidden', background: '#09090b', borderRadius: '12px', border: '1px solid #27272a' }}>
+        <canvas
+          ref={canvasRef}
+          style={{ width: '100%', height: 500, cursor: tooltipNode ? 'grab' : 'crosshair' }}
+          onMouseMove={handleMouseMove}
+          onMouseDown={handleMouseDown}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={() => { hoveredNodeRef.current = null; dragNodeRef.current = null; setTooltipNode(null); }}
+        />
+
+        {tooltipNode && (
+          <div className="graph-tooltip" style={{ position: 'absolute', top: 20, right: 20, background: 'rgba(24, 24, 27, 0.9)', padding: '12px', borderRadius: '8px', border: '1px solid #6366f1', backdropFilter: 'blur(8px)', pointerEvents: 'none', maxWidth: '240px' }}>
+            <div style={{ color: '#6366f1', fontWeight: 'bold', fontSize: '13px', marginBottom: '4px' }}>{tooltipNode.label}</div>
+            <div style={{ color: '#a1a1aa', fontSize: '11px', wordBreak: 'break-all' }}>{tooltipNode.path}</div>
+            <div style={{ marginTop: '8px', display: 'flex', gap: '8px' }}>
+              <span className="tag info">{impactMap[tooltipNode.id]} Connections</span>
+            </div>
+          </div>
+        )}
+
+        <div className="graph-controls" style={{ position: 'absolute', bottom: 20, left: 20, display: 'flex', gap: '10px' }}>
+          <div style={{ fontSize: '11px', color: '#52525b', display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#6366f1' }} /> God Node
+          </div>
+          <div style={{ fontSize: '11px', color: '#52525b', display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#27272a', border: '1px solid #6366f1' }} /> Module
           </div>
         </div>
-      ) : (
-        <div className="card"><div className="empty">No dependency edges found. Run <code>kiteretsu index</code> first.</div></div>
-      )}
+      </div>
     </div>
   );
 }
@@ -360,10 +433,15 @@ function TasksTab({ tasks, onReload }: any) {
             <input placeholder="Task Description" value={desc} onChange={e => setDesc(e.target.value)} required className="form-input" />
             <div style={{ display: 'flex', gap: 10 }}>
               <select value={type} onChange={e => setType(e.target.value)} className="form-input" style={{ flex: 1 }}>
-                <option value="feature">Feature</option><option value="bugfix">Bugfix</option><option value="refactor">Refactor</option>
+                <option value="feature">Feature</option>
+                <option value="bugfix">Bugfix</option>
+                <option value="refactor">Refactor</option>
+                <option value="chore">Chore</option>
+                <option value="unknown">Unknown</option>
               </select>
               <select value={outcome} onChange={e => setOutcome(e.target.value)} className="form-input" style={{ flex: 1 }}>
-                <option value="success">Success</option><option value="failure">Failure</option>
+                <option value="success">Success</option>
+                <option value="failure">Failure</option>
               </select>
             </div>
             <input placeholder="Notes (optional)" value={notes} onChange={e => setNotes(e.target.value)} className="form-input" />
@@ -400,15 +478,17 @@ function RulesTab({ rules, onReload }: any) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [severity, setSeverity] = useState('info');
+  const [scopeType, setScopeType] = useState('global');
+  const [scopeValue, setScopeValue] = useState('');
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     await fetch(`${API}/rules`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, description, severity })
+      body: JSON.stringify({ name, description, severity, scope_type: scopeType, scope_value: scopeValue })
     });
-    setName(''); setDescription('');
+    setName(''); setDescription(''); setScopeValue('');
     onReload();
   };
 
@@ -434,6 +514,21 @@ function RulesTab({ rules, onReload }: any) {
                 <option value="info">Info</option><option value="warning">Warning</option><option value="error">Error</option>
               </select>
             </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <select value={scopeType} onChange={e => setScopeType(e.target.value)} className="form-input" style={{ width: 150 }}>
+                <option value="global">Global</option>
+                <option value="path">Path</option>
+                <option value="language">Language</option>
+              </select>
+              <input
+                placeholder={scopeType === 'global' ? 'Applies to all files' : scopeType === 'path' ? 'e.g. src/components' : 'e.g. .ts, .go'}
+                value={scopeValue}
+                onChange={e => setScopeValue(e.target.value)}
+                disabled={scopeType === 'global'}
+                className="form-input"
+                style={{ flex: 1 }}
+              />
+            </div>
             <input placeholder="Description (e.g. Use native fetch)" value={description} onChange={e => setDescription(e.target.value)} required className="form-input" />
             <button type="submit" className="btn-submit">Record Rule</button>
           </form>
@@ -444,8 +539,13 @@ function RulesTab({ rules, onReload }: any) {
         <div className="rule-grid">
           {rules.map((r: any) => (
             <div key={r.id} className="rule-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <div className="name">{r.name}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <div className="name">{r.name}</div>
+                  <span className={`tag ${r.scope_type === 'global' ? 'success' : 'warning'}`} style={{ fontSize: '10px', padding: '2px 6px' }}>
+                    {r.scope_type}{r.scope_value ? `: ${r.scope_value}` : ''}
+                  </span>
+                </div>
                 <div className="desc">{r.description}</div>
               </div>
               <button onClick={() => remove(r.id)} className="btn-delete">×</button>
