@@ -17,6 +17,7 @@ export class Kiteretsu {
   private _analyzer?: CodeAnalyzer;
   private rootDir: string;
   private config: KiteretsuConfig;
+  private packageMap: Map<string, string> = new Map();
 
   constructor(config: KiteretsuConfig) {
     // Normalize rootDir for consistent path comparisons (especially on Windows)
@@ -132,18 +133,54 @@ export class Kiteretsu {
       .where({ source_type: 'file', source_id: fileId, relation: 'imports' })
       .delete();
 
-    for (const source of importSources) {
+    for (const sourceRaw of importSources) {
       let targetPath: string | null = null;
+      // Clean source path: remove JS/TS extensions that might be there for ESM compatibility
+      const source = sourceRaw.replace(/\.(js|jsx|ts|tsx)$/, '');
 
       if (source.startsWith('.')) {
         const sourceDir = path.dirname(fullPath);
         let targetBase = path.resolve(sourceDir, source);
         targetPath = this.resolveFilePath(targetBase);
       } else {
-        targetPath = this.resolveFilePath(path.resolve(this.rootDir, source));
+        // Find the package name (could be scoped)
+        let packageName = "";
+        let subPath = "";
+        
+        if (source.startsWith('@')) {
+          const parts = source.split('/');
+          packageName = parts.slice(0, 2).join('/');
+          subPath = parts.slice(2).join('/');
+        } else {
+          const parts = source.split('/');
+          packageName = parts[0];
+          subPath = parts.slice(1).join('/');
+        }
+
+        const packageDir = this.packageMap.get(packageName);
+        if (packageDir) {
+          const srcDir = path.join(packageDir, 'src');
+          if (subPath) {
+            targetPath = this.resolveFilePath(path.join(srcDir, subPath)) || 
+                         this.resolveFilePath(path.join(packageDir, subPath));
+          } else {
+            targetPath = this.resolveFilePath(srcDir) || this.resolveFilePath(packageDir);
+          }
+        }
+
+        if (!targetPath) {
+          // Fallback to root-relative (legacy)
+          targetPath = this.resolveFilePath(path.resolve(this.rootDir, source));
+        }
       }
 
       if (targetPath) {
+        // Normalize targetPath for consistent comparison
+        targetPath = path.resolve(targetPath).replace(/\\/g, '/');
+        if (process.platform === 'win32' && /^[a-z]:/i.test(targetPath)) {
+          targetPath = targetPath[0].toLowerCase() + targetPath.slice(1);
+        }
+
         let targetRelative = path.relative(this.rootDir, targetPath).replace(/\\/g, '/');
         if (targetRelative.startsWith('./')) targetRelative = targetRelative.slice(2);
         
@@ -184,6 +221,7 @@ export class Kiteretsu {
 
   async init() {
     await this.db.initialize();
+    await this.populatePackageMap();
 
     // Create default config if it doesn't exist
     const configPath = path.join(this.rootDir, '.kiteretsu', 'config.json');
@@ -212,6 +250,7 @@ export class Kiteretsu {
   }
 
   async index(): Promise<{ files: number; symbols: number; edges: number }> {
+    await this.populatePackageMap();
     const files = await this.scanner.scan();
     const knex = this.db.getKnex();
 
@@ -253,9 +292,8 @@ export class Kiteretsu {
       
       try {
         await this.indexFile(fullPath);
-        // We could count here but indexFile handles the DB directly
-      } catch (error) {
-        // Silently skip unparseable files
+      } catch (error: any) {
+        fs.appendFileSync(path.resolve(this.rootDir, 'packages/core/debug_log.txt'), `[Indexer] Error indexing ${relativePath}: ${error.message}\n`);
       }
     }
 
@@ -272,6 +310,36 @@ export class Kiteretsu {
     }
 
     return { files: fileMap.size, symbols: totalSymbols, edges: totalEdges };
+  }
+
+  private async populatePackageMap() {
+    this.packageMap.clear();
+    const packagesDir = path.join(this.rootDir, 'packages');
+    if (!fs.existsSync(packagesDir)) return;
+
+    const dirs = await fs.readdir(packagesDir);
+    for (const dir of dirs) {
+      const pkgPath = path.join(packagesDir, dir, 'package.json');
+      if (fs.existsSync(pkgPath)) {
+        try {
+          const pkg = await fs.readJson(pkgPath);
+          if (pkg.name) {
+            this.packageMap.set(pkg.name, path.join(packagesDir, dir));
+          }
+        } catch (e) { }
+      }
+    }
+    
+    // Also include root package
+    const rootPkgPath = path.join(this.rootDir, 'package.json');
+    if (fs.existsSync(rootPkgPath)) {
+      try {
+        const pkg = await fs.readJson(rootPkgPath);
+        if (pkg.name) {
+          this.packageMap.set(pkg.name, this.rootDir);
+        }
+      } catch (e) { }
+    }
   }
 
   /** Resolve a base path (without extension) to an actual file on disk. */

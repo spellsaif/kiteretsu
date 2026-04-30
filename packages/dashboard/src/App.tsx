@@ -153,6 +153,9 @@ function GraphTab({ graph }: { graph: GraphData }) {
   // State only for UI overlays (Tooltips)
   const [tooltipNode, setTooltipNode] = useState<any>(null);
 
+  const [cooling, setCooling] = useState(1.0);
+  const coolingRef = useRef(1.0);
+
   const impactMap = useMemo(() => {
     const counts: Record<number, number> = {};
     graph.nodes.forEach(n => counts[n.id] = 0);
@@ -175,53 +178,55 @@ function GraphTab({ graph }: { graph: GraphData }) {
     const nodes = nodesRef.current;
     const links = graph.links;
 
-    // Physics step
-    for (let i = 0; i < 3; i++) {
-      for (const node of nodes) {
-        // ATOMIC LOCK: Check refs directly for zero-latency freezing
-        if (node === dragNodeRef.current || node === hoveredNodeRef.current) {
-          node.vx = 0;
-          node.vy = 0;
-          continue;
+    // Physics step - only move if we haven't cooled down too much
+    if (coolingRef.current > 0.01) {
+      for (let i = 0; i < 3; i++) {
+        for (const node of nodes) {
+          if (node === dragNodeRef.current) {
+            node.vx = 0; node.vy = 0;
+            coolingRef.current = Math.max(coolingRef.current, 0.2); 
+            continue;
+          }
+
+          // Repulsion
+          for (const other of nodes) {
+            if (node.id === other.id) continue;
+            const dx = node.x - other.x;
+            const dy = node.y - other.y;
+            const distSq = dx * dx + dy * dy || 1;
+            const force = Math.min(600 / distSq, 8);
+            node.vx += (dx / Math.sqrt(distSq)) * force * coolingRef.current;
+            node.vy += (dy / Math.sqrt(distSq)) * force * coolingRef.current;
+          }
+
+          // Center gravity
+          node.vx += (W / 2 - node.x) * 0.005 * coolingRef.current;
+          node.vy += (H / 2 - node.y) * 0.005 * coolingRef.current;
         }
 
-        // Repulsion
-        for (const other of nodes) {
-          if (node.id === other.id) continue;
-          const dx = node.x - other.x;
-          const dy = node.y - other.y;
-          const distSq = dx * dx + dy * dy || 1;
-          const force = 600 / distSq;
-          node.vx += (dx / Math.sqrt(distSq)) * force;
-          node.vy += (dy / Math.sqrt(distSq)) * force;
+        // Attraction
+        for (const link of links) {
+          const a = nodes.find(n => n.id === link.source);
+          const b = nodes.find(n => n.id === link.target);
+          if (!a || !b) continue;
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          const force = (dist - 140) * 0.015 * coolingRef.current;
+          const fx = (dx / dist) * force;
+          const fy = (dy / dist) * force;
+          if (a !== dragNodeRef.current) { a.vx += fx; a.vy += fy; }
+          if (b !== dragNodeRef.current) { b.vx -= fx; b.vy -= fy; }
         }
 
-        // Center gravity
-        node.vx += (W / 2 - node.x) * 0.005;
-        node.vy += (H / 2 - node.y) * 0.005;
+        for (const node of nodes) {
+          node.vx *= 0.8;
+          node.vy *= 0.8;
+          node.x += node.vx;
+          node.y += node.vy;
+        }
       }
-
-      // Attraction
-      for (const link of links) {
-        const a = nodes.find(n => n.id === link.source);
-        const b = nodes.find(n => n.id === link.target);
-        if (!a || !b) continue;
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const force = (dist - 140) * 0.015;
-        const fx = (dx / dist) * force;
-        const fy = (dy / dist) * force;
-        if (a !== dragNodeRef.current && a !== hoveredNodeRef.current) { a.vx += fx; a.vy += fy; }
-        if (b !== dragNodeRef.current && b !== hoveredNodeRef.current) { b.vx -= fx; b.vy -= fy; }
-      }
-
-      for (const node of nodes) {
-        node.vx *= 0.8;
-        node.vy *= 0.8;
-        node.x += node.vx;
-        node.y += node.vy;
-      }
+      coolingRef.current *= 0.995;
     }
 
     // Draw
@@ -261,11 +266,20 @@ function GraphTab({ graph }: { graph: GraphData }) {
       ctx.stroke();
       ctx.shadowBlur = 0;
 
-      if (isHovered || isRelated || impact > 3 || nodes.length < 15) {
+      if (isHovered || isRelated || impact > 2 || nodes.length < 40) {
         ctx.fillStyle = isHovered ? '#fff' : '#a1a1aa';
         ctx.font = `${isHovered ? 'bold ' : ''}12px Inter, sans-serif`;
         ctx.textAlign = 'center';
-        ctx.fillText(node.label, node.x, node.y + radius + 18);
+        
+        let label = node.label;
+        if (label.startsWith('index.') && node.path) {
+          const parts = node.path.split('/');
+          if (parts.length > 1) {
+            label = parts[parts.length - 2] + '/' + label;
+          }
+        }
+        
+        ctx.fillText(label, node.x, node.y + radius + 18);
       }
     });
 
@@ -287,14 +301,27 @@ function GraphTab({ graph }: { graph: GraphData }) {
     const logicalW = canvas.width / dpr;
     const logicalH = canvas.height / dpr;
 
-    nodesRef.current = graph.nodes.map((n, i) => ({
-      ...n,
-      x: logicalW / 4 + Math.random() * (logicalW / 2),
-      y: logicalH / 4 + Math.random() * (logicalH / 2),
-      vx: 0,
-      vy: 0,
-    }));
+    // Preserve existing nodes' positions to prevent shuffling on every API poll
+    const existingNodes = nodesRef.current;
+    const newNodes = graph.nodes.map(n => {
+      const existing = existingNodes.find(en => en.id === n.id);
+      if (existing) return { ...existing, ...n }; // Keep x, y, vx, vy
+      
+      return {
+        ...n,
+        x: logicalW / 4 + Math.random() * (logicalW / 2),
+        y: logicalH / 4 + Math.random() * (logicalH / 2),
+        vx: 0,
+        vy: 0,
+      };
+    });
 
+    // Reset cooling if node set changed
+    if (newNodes.length !== existingNodes.length) {
+      coolingRef.current = 1.0;
+    }
+
+    nodesRef.current = newNodes;
     animRef.current = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(animRef.current);
   }, [graph, draw]);

@@ -56,10 +56,10 @@ export class Database {
       await this.db.schema.createTable('graph_edges', (table) => {
         table.increments('id').primary();
         table.string('source_type').notNullable();
-        table.integer('source_id').notNullable();
+        table.integer('source_id').references('id').inTable('files').onDelete('CASCADE').notNullable();
         table.string('relation').notNullable(); // imports, tested_by
         table.string('target_type').notNullable();
-        table.integer('target_id').notNullable();
+        table.integer('target_id').references('id').inTable('files').onDelete('CASCADE').notNullable();
         table.float('confidence').defaultTo(1.0);
         table.string('provenance');
         table.timestamps(true, true);
