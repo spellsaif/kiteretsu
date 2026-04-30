@@ -22,12 +22,21 @@ export class CodeAnalyzer {
 
   // Find what other files depend on this file
   async getBlastRadius(filePath: string): Promise<string[]> {
-    const relativePath = path.relative(this.rootDir, filePath).replace(/\\/g, '/');
+    let fullPath = path.resolve(filePath).replace(/\\/g, '/');
+    if (process.platform === 'win32' && /^[a-z]:/i.test(fullPath)) {
+      fullPath = fullPath[0].toLowerCase() + fullPath.slice(1);
+    }
+    
+    let relativePath = path.relative(this.rootDir, fullPath).replace(/\\/g, '/');
+    if (relativePath.startsWith('./')) relativePath = relativePath.slice(2);
+    
     const knex = this.db.getKnex();
 
     try {
       // 1. Try Fast Path: Database Query
-      const file = await knex('files').where({ path: relativePath }).first();
+      const file = await knex('files')
+        .whereRaw('LOWER(path) = ?', [relativePath.toLowerCase()])
+        .first();
       if (file) {
         const edges = await knex('graph_edges')
           .where({ target_id: file.id, relation: 'imports' })

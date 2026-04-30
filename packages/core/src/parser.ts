@@ -1,6 +1,10 @@
 import Parser from 'tree-sitter';
 import fs from 'fs-extra';
 import path from 'path';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const LOG_PATH = path.resolve(process.cwd(), 'debug_log.txt');
 
 export interface SymbolInfo {
   name: string;
@@ -21,16 +25,19 @@ export class CodeParser {
 
     if (['.ts', '.tsx', '.js', '.jsx'].includes(ext)) {
       try {
-        const { default: TypeScript } = await import('tree-sitter-typescript');
+        const mod = require('tree-sitter-typescript');
         const tsParser = new Parser();
+        const langObj = mod.typescript || mod;
         // @ts-ignore
-        tsParser.setLanguage(TypeScript.typescript || TypeScript);
+        tsParser.setLanguage(langObj);
         this.parsers.set('.ts', tsParser);
         this.parsers.set('.tsx', tsParser);
         this.parsers.set('.js', tsParser);
         this.parsers.set('.jsx', tsParser);
-        this.languages.set('typescript', TypeScript);
-      } catch (e) { }
+        this.languages.set('typescript', langObj);
+      } catch (e: any) {
+        fs.appendFileSync(LOG_PATH, `[Parser] TS LOAD ERROR: ${e.message}\n`);
+      }
       return;
     }
 
@@ -63,13 +70,43 @@ export class CodeParser {
     const lang = langMap[ext];
     if (lang) {
       try {
-        const { default: mod } = await import(lang.module);
+        const mod = require(lang.module);
+        const actualMod = mod.default || mod;
+        
         const p = new Parser();
-        // @ts-ignore
-        p.setLanguage(mod.php || mod);
-        this.parsers.set(ext, p);
-        this.languages.set(lang.name, mod);
-      } catch (e) { }
+        let success = false;
+
+        const snakeName = lang.name.replace(/-/g, '_');
+        const candidates = [
+          actualMod[snakeName],
+          actualMod[lang.name],
+          actualMod.language,
+          actualMod,
+          mod
+        ];
+
+        for (const candidate of candidates) {
+          if (!candidate) continue;
+          try {
+            fs.appendFileSync(LOG_PATH, `[Parser] Trying candidate for ${lang.name}: type=${typeof candidate}, proto=${Object.getPrototypeOf(candidate)?.constructor?.name}\n`);
+            // @ts-ignore
+            p.setLanguage(candidate);
+            this.parsers.set(ext, p);
+            this.languages.set(lang.name, candidate);
+            success = true;
+            fs.appendFileSync(LOG_PATH, `[Parser] ${lang.name} loaded successfully.\n`);
+            break;
+          } catch (e: any) {
+             fs.appendFileSync(LOG_PATH, `[Parser] Candidate FAILED for ${lang.name}: ${e.message}\n`);
+          }
+        }
+
+        if (!success) {
+          fs.appendFileSync(LOG_PATH, `[Parser] FAILED to find valid langObj for ${lang.name}\n`);
+        }
+      } catch (e: any) { 
+        fs.appendFileSync(LOG_PATH, `[Parser] INIT ERROR for ${lang.module}: ${e.message}\n`);
+      }
     }
   }
 
@@ -87,9 +124,7 @@ export class CodeParser {
     let language: any;
 
     if (['.ts', '.tsx', '.js', '.jsx'].includes(ext)) {
-      const TypeScript = this.languages.get('typescript');
-      // @ts-ignore
-      language = TypeScript.typescript;
+      language = this.languages.get('typescript');
       queryString = `
         (function_declaration name: (identifier) @func.name)
         (class_declaration name: (type_identifier) @class.name)
@@ -108,14 +143,12 @@ export class CodeParser {
       queryString = `
         (function_item name: (identifier) @func.name)
         (struct_item name: (type_identifier) @struct.name)
-        (impl_item type: (type_identifier) @impl.name)
       `;
     } else if (ext === '.go') {
       language = this.languages.get('go');
       queryString = `
         (function_declaration name: (identifier) @func.name)
         (type_declaration (type_spec name: (type_identifier) @type.name))
-        (method_declaration name: (field_identifier) @method.name)
       `;
     } else if (ext === '.java') {
       language = this.languages.get('java');
@@ -138,7 +171,7 @@ export class CodeParser {
       `;
     }
 
-    if (!queryString) return [];
+    if (!queryString || !language) return [];
 
     try {
       const query = new Parser.Query(language, queryString);
@@ -152,48 +185,98 @@ export class CodeParser {
           endLine: capture.node.endPosition.row + 1,
         });
       }
-    } catch (error) {
-      // Query syntax might be unsupported for this language version, safely ignore symbol extraction
-    }
+    } catch (error) { }
 
     return symbols;
   }
 
   async parseImports(filePath: string): Promise<string[]> {
-    await this.initParsers(path.extname(filePath));
     const ext = path.extname(filePath);
+    await this.initParsers(ext);
     const parser = this.parsers.get(ext);
-    if (!parser || !['.ts', '.tsx', '.js', '.jsx'].includes(ext)) return [];
+    if (!parser) return [];
 
     const content = await fs.readFile(filePath, 'utf8');
     const tree = parser.parse(content);
     const imports: string[] = [];
 
-    // Capture sources from import and export statements
-    const { default: TypeScript } = await import('tree-sitter-typescript');
-    const queryString = `
-      (import_statement) @import
-      (export_statement) @export
-    `;
-    
-    try {
-      const query = new Parser.Query(TypeScript.typescript || TypeScript, queryString);
-      const captures = query.captures(tree.rootNode);
+    let queryString = '';
+    let language: any;
 
-      for (const capture of captures) {
-        // Find the string child node which contains the source path
-        for (let i = 0; i < capture.node.childCount; i++) {
-          const child = capture.node.child(i);
-          if (!child) continue;
-          if (child.type === 'string') {
-            const source = child.text.replace(/['"]/g, '');
-            if (source && !imports.includes(source)) {
-              imports.push(source);
-            }
+    if (['.ts', '.tsx', '.js', '.jsx'].includes(ext)) {
+      language = this.languages.get('typescript');
+      queryString = `
+        (import_statement source: (string) @source)
+        (export_statement source: (string) @source)
+      `;
+    } else if (ext === '.py') {
+      language = this.languages.get('python');
+      queryString = `
+        (import_statement name: (dotted_name) @source)
+        (import_from_statement module: (dotted_name) @source)
+      `;
+    } else if (ext === '.go') {
+      language = this.languages.get('go');
+      queryString = `
+        (import_spec path: (string_literal) @source)
+      `;
+    } else if (ext === '.rs') {
+      language = this.languages.get('rust');
+      queryString = `
+        (use_declaration argument: (scoped_identifier path: (identifier) @source))
+      `;
+    }
+
+    if (queryString && language) {
+      try {
+        const query = new Parser.Query(language, queryString);
+        const captures = query.captures(tree.rootNode);
+
+        for (const capture of captures) {
+          let source = capture.node.text.replace(/['"]/g, '');
+          
+          if (ext === '.py') {
+            source = source.replace(/\./g, '/');
+          }
+          
+          if (source && !imports.includes(source)) {
+            imports.push(source);
           }
         }
+      } catch (e: any) {
+        // Tree-sitter failed
       }
-    } catch (e) { }
+    }
+
+    // --- Regex Fallback for robustness ---
+    if (imports.length === 0) {
+      try {
+        const content = await fs.readFile(filePath, 'utf8');
+        if (ext === '.py') {
+          // Standard: import x, y; from x import y
+          const matches = content.matchAll(/(?:from|import)\s+([\w\.]+)/g);
+          for (const match of matches) {
+            const source = match[1].replace(/\./g, '/');
+            if (source && source !== 'import' && source !== 'from') {
+              if (!imports.includes(source)) imports.push(source);
+            }
+          }
+        } else if (ext === '.go') {
+          // Matches: import "fmt" AND import ( "fmt" \n "net/http" )
+          const matches = content.matchAll(/import\s+(?:\(\s*|")([^" \n)]+)"/g);
+          for (const match of matches) {
+            if (!imports.includes(match[1])) imports.push(match[1]);
+          }
+        } else if (ext === '.rs') {
+          // Matches: use std::collections; use crate::models;
+          const matches = content.matchAll(/use\s+([\w:]+)/g);
+          for (const match of matches) {
+            const source = match[1].split('::')[0];
+            if (source && !imports.includes(source)) imports.push(source);
+          }
+        }
+      } catch (e) {}
+    }
 
     return imports;
   }

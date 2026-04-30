@@ -94,8 +94,14 @@ export class Database {
     }
   }
 
-  getKnex() {
+  getKnex(): Knex {
     return this.db;
+  }
+
+  async getSymbolsForFile(filePath: string): Promise<any[]> {
+    const file = await this.db('files').where({ path: filePath }).first();
+    if (!file) return [];
+    return this.db('symbols').where({ file_id: file.id });
   }
 
   async destroy() {
