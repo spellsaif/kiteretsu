@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "dist",
+    "rootDir": ".",
+    "baseUrl": ".",
+    "paths": {
+      "@kiteretsu/core": ["packages/core/src"],
+      "@kiteretsu/core/*": ["packages/core/src/*"],
+      "@kiteretsu/server": ["packages/server/src"],
+      "@kiteretsu/server/*": ["packages/server/src/*"]
+    }
+  },
+  "exclude": ["node_modules", "dist"]
+}
