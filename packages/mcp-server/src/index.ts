@@ -1,0 +1,150 @@
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js';
+import { Kiteretsu } from '@kiteretsu/core';
+import path from 'path';
+
+const rootDir = process.cwd();
+const kiteretsu = new Kiteretsu({ rootDir });
+
+const server = new Server(
+  {
+    name: 'kiteretsu',
+    version: '0.1.0',
+  },
+  {
+    capabilities: {
+      tools: {},
+    },
+  }
+);
+
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  return {
+    tools: [
+      {
+        name: 'get_context_pack',
+        description: 'Generate a Context Pack for a specific coding task',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            task: {
+              type: 'string',
+              description: 'The description of the task to be performed',
+            },
+            budget_tokens: {
+              type: 'number',
+              description: 'Maximum tokens for the context pack',
+              default: 6000,
+            },
+          },
+          required: ['task'],
+        },
+      },
+      {
+        name: 'index_repository',
+        description: 'Scan and index the current repository',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+      },
+      {
+        name: 'record_rule',
+        description: 'Record an architectural rule for the repository',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            description: { type: 'string' },
+            scope: { type: 'string', default: 'global' },
+            value: { type: 'string', default: '' }
+          },
+          required: ['name', 'description']
+        }
+      },
+      {
+        name: 'record_task_outcome',
+        description: 'Record the outcome of a coding task to help the agent learn',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            task: { type: 'string' },
+            result: { type: 'string', enum: ['success', 'failure'] },
+            notes: { type: 'string', default: '' },
+            type: { type: 'string', default: 'unknown' }
+          },
+          required: ['task', 'result']
+        }
+      }
+    ],
+  };
+});
+
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const { name, arguments: args } = request.params;
+
+  try {
+    if (name === 'get_context_pack') {
+      const task = (args as any).task;
+      const pack = await kiteretsu.getContextPack(task);
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(pack, null, 2),
+          },
+        ],
+      };
+    }
+
+    if (name === 'index_repository') {
+      await kiteretsu.index();
+      return {
+        content: [{ type: 'text', text: 'Repository indexing complete.' }],
+      };
+    }
+
+    if (name === 'record_rule') {
+      const { name: ruleName, description, scope = 'global', value = '' } = args as any;
+      await kiteretsu.addRule(ruleName, description, scope, value);
+      return {
+        content: [{ type: 'text', text: 'Rule recorded successfully.' }],
+      };
+    }
+
+    if (name === 'record_task_outcome') {
+      const { task, result, type = 'unknown', notes = '' } = args as any;
+      await kiteretsu.recordTaskOutcome(task, type, result, notes);
+      return {
+        content: [{ type: 'text', text: 'Task outcome recorded successfully.' }],
+      };
+    }
+
+    throw new Error(`Unknown tool: ${name}`);
+  } catch (error: any) {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Error: ${error.message}`,
+        },
+      ],
+      isError: true,
+    };
+  }
+});
+
+async function main() {
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error('Kiteretsu MCP server running on stdio');
+}
+
+main().catch((error) => {
+  console.error('Fatal error in main():', error);
+  process.exit(1);
+});
