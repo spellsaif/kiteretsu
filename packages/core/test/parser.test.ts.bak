@@ -1,0 +1,84 @@
+import { describe, it, expect, beforeEach, afterAll } from 'vitest';
+import { CodeParser } from '../src/parser.js';
+import path from 'path';
+import fs from 'fs-extra';
+
+const TEST_ROOT = path.resolve(process.cwd(), 'temp_test_parser');
+
+describe('CodeParser - Hybrid Engine', () => {
+  let parser: CodeParser;
+
+  beforeEach(async () => {
+    await fs.ensureDir(TEST_ROOT);
+    parser = new CodeParser();
+  });
+
+  afterAll(async () => {
+    await fs.remove(TEST_ROOT);
+  });
+
+  it('should extract symbols from TypeScript', async () => {
+    const content = `
+      export class MyClass {
+        myMethod() {}
+      }
+      export function myFunc() {}
+    `;
+    const filePath = path.join(TEST_ROOT, 'test.ts');
+    await fs.writeFile(filePath, content);
+
+    const symbols = await parser.parseSymbols(filePath);
+    const names = symbols.map(s => s.name);
+    
+    expect(names).toContain('MyClass');
+    expect(names).toContain('myMethod');
+    expect(names).toContain('myFunc');
+  });
+
+  it('should extract imports from Python (Regex Fallback)', async () => {
+    const content = `
+import os
+from math import sqrt
+from .local_module import thing
+    `;
+    const filePath = path.join(TEST_ROOT, 'test.py');
+    await fs.writeFile(filePath, content);
+
+    const imports = await parser.parseImports(filePath);
+    
+    expect(imports).toContain('os');
+    expect(imports).toContain('math');
+    expect(imports).toContain('local_module/thing');
+  });
+
+  it('should extract imports from Go (Regex Fallback)', async () => {
+    const content = `
+package main
+import (
+    "fmt"
+    "net/http"
+)
+    `;
+    const filePath = path.join(TEST_ROOT, 'test.go');
+    await fs.writeFile(filePath, content);
+
+    const imports = await parser.parseImports(filePath);
+    
+    expect(imports).toContain('fmt');
+    expect(imports).toContain('net/http');
+  });
+
+  it('should extract imports from Rust (Regex Fallback)', async () => {
+    const content = `
+use std::collections::HashMap;
+use crate::models::User;
+    `;
+    const filePath = path.join(TEST_ROOT, 'test.rs');
+    await fs.writeFile(filePath, content);
+
+    const imports = await parser.parseImports(filePath);
+    
+    expect(imports).toContain('std');
+    expect(imports).toContain('crate');
+  });
+});
