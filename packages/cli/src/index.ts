@@ -7,6 +7,7 @@ import gradient from 'gradient-string';
 import { Kiteretsu } from '@kiteretsu/core';
 import { CodeWatcher } from '@kiteretsu/core/watcher.js';
 import { startServer } from '@kiteretsu/server';
+import open from 'open';
 import path from 'path';
 import fs from 'fs-extra';
 
@@ -45,7 +46,7 @@ let rootDir = initCwd || executionDir;
 
 // If we are inside packages/cli and INIT_CWD is not set correctly, try to find the root
 if (rootDir.includes('packages' + path.sep + 'cli')) {
-    rootDir = findWorkspaceRoot(rootDir);
+  rootDir = findWorkspaceRoot(rootDir);
 }
 
 const configPath = path.join(rootDir, '.kiteretsu', 'config.json');
@@ -265,8 +266,19 @@ program
   .description('Start the Kiteretsu dashboard')
   .option('-p, --port <port>', 'Port to run the dashboard on', '3000')
   .action(async (options) => {
-    console.log(chalk.bold.cyan('\n🚀 Starting Kiteretsu Dashboard...'));
+    console.log(chalk.bold.cyan('\n🚀 Launching Kiteretsu intelligence...'));
+    
+    // 1. Start Watcher (Self-healing memory)
+    const watcher = new CodeWatcher(getKiteretsu());
+    watcher.start(rootDir).catch(e => console.error(chalk.red(`Watcher failed: ${e.message}`)));
+
+    // 2. Start Server
     startServer(rootDir, parseInt(options.port));
+
+    // 3. Open Browser
+    setTimeout(() => {
+      open(`http://localhost:${options.port}`);
+    }, 800);
   });
 
 program
@@ -363,7 +375,7 @@ You MUST use Kiteretsu to understand the codebase context before making complex 
 1. Run \`kiteretsu context "<task>"\` to get the context pack.
 2. Adhere to all architectural rules returned in the pack.
 3. Check the "Blast Radius" to identify high-risk areas.`);
-          
+
           await fs.outputFile(path.join(targetDir, '.agents', 'workflows', 'kiteretsu.md'), `---
 name: Kiteretsu Context
 description: Get codebase context for a task

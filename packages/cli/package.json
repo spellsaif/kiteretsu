@@ -1,5 +1,5 @@
 {
-  "name": "@kiteretsu/cli",
+  "name": "kiteretsu",
   "version": "0.1.0",
   "bin": {
     "kiteretsu": "dist/index.js"
@@ -8,8 +8,7 @@
   "scripts": {
     "build": "tsc",
     "start": "tsx src/index.ts",
-    "dev": "tsx watch src/index.ts",
-    "test-cwd": "node ../../scratch/test_cwd.js"
+    "dev": "tsx watch src/index.ts"
   },
   "dependencies": {
     "@kiteretsu/core": "workspace:*",
@@ -20,12 +19,14 @@
     "boxen": "^7.1.1",
     "gradient-string": "^2.0.2",
     "inquirer": "^9.2.14",
-    "fs-extra": "^11.2.0"
+    "fs-extra": "^11.2.0",
+    "open": "^10.1.0"
   },
   "devDependencies": {
     "typescript": "^5.0.0",
     "tsx": "^4.0.0",
     "@types/inquirer": "^9.0.7",
-    "@types/fs-extra": "^11.0.4"
+    "@types/fs-extra": "^11.0.4",
+    "@types/open": "^6.2.1"
   }
 }

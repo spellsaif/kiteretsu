@@ -137,16 +137,16 @@ export function startServer(rootDir: string, port: number = 3000) {
     try {
       const absoluteRoot = path.resolve(rootDir);
       const configPath = path.join(absoluteRoot, '.kiteretsu', 'config.json');
-      
+
       if (fs.existsSync(configPath)) {
         const configText = fs.readFileSync(configPath, 'utf-8');
         res.json(JSON.parse(configText));
       } else {
         // Return 404 with the path so the frontend can display it for debugging
-        res.status(404).json({ 
-          error: 'Config file not found', 
+        res.status(404).json({
+          error: 'Config file not found',
           attemptedPath: configPath,
-          rootDir: absoluteRoot 
+          rootDir: absoluteRoot
         });
       }
     } catch (error: any) {
@@ -168,7 +168,7 @@ export function startServer(rootDir: string, port: number = 3000) {
       const files = await knex('files')
         .whereIn('id', Array.from(allIds))
         .select('id', 'path', 'summary', 'stale');
-      
+
       const symbols = await knex('symbols')
         .whereIn('file_id', Array.from(allIds))
         .select('file_id', 'type');
@@ -202,8 +202,33 @@ export function startServer(rootDir: string, port: number = 3000) {
   });
 
   app.listen(port, () => {
-    console.log(`Kiteretsu Dashboard API running at http://localhost:${port}`);
+    console.log(`\n🚀 Kiteretsu Dashboard running at: http://localhost:${port}`);
+    console.log(`📡 API Engine initialized for: ${rootDir}\n`);
   });
+
+  // Serve Dashboard Static Files (Production)
+  const dashboardDistPath = path.join(path.dirname(import.meta.url.replace('file:///', '')), '..', '..', 'dashboard', 'dist');
+  
+  if (fs.existsSync(dashboardDistPath)) {
+    app.use(express.static(dashboardDistPath));
+    app.get('*', (req, res) => {
+      if (req.path.startsWith('/api')) return;
+      res.sendFile(path.join(dashboardDistPath, 'index.html'));
+    });
+  } else {
+    // In development, we might not have the dist folder
+    app.get('/', (req, res) => {
+      res.send(`
+        <html>
+          <body style="font-family: sans-serif; background: #0f172a; color: #94a3b8; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0;">
+            <h1 style="color: #38bdf8;">Kiteretsu API Server</h1>
+            <p>Dashboard UI not built. Run <code>pnpm --filter dashboard build</code> to enable the UI.</p>
+            <p>Or use the dev server at <code>http://localhost:5173</code></p>
+          </body>
+        </html>
+      `);
+    });
+  }
 }
 
 // Standalone mode

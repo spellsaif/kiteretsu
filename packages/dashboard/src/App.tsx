@@ -46,7 +46,7 @@ export default function App() {
     return () => clearInterval(interval);
   }, [load]);
 
-  const navItems: { id: Tab; label: string; icon: JSX.Element }[] = [
+  const navItems: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'overview', label: 'Overview', icon: Icons.grid },
     { id: 'graph', label: 'Dependency Graph', icon: Icons.graph },
     { id: 'memory', label: 'Files', icon: Icons.files },
@@ -588,7 +588,7 @@ function SettingsTab({ config }: any) {
         <h2>Configuration</h2>
         <p>Managed via <code>.kiteretsu/config.json</code></p>
       </div>
-      
+
       <div className="card">
         <div className="settings-group">
           <h4>General</h4>
