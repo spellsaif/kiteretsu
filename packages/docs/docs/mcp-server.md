@@ -1,3 +1,7 @@
+---
+sidebar_position: 5
+---
+
 # Model Context Protocol (MCP)
 
 Kiteretsu supports the **Model Context Protocol (MCP)**, a standard that allows AI agents to communicate with external tools and data sources.

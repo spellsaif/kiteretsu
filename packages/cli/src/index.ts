@@ -263,9 +263,10 @@ program
   });
 
 program
-  .command('dashboard')
-  .description('Start the Kiteretsu dashboard')
-  .option('-p, --port <port>', 'Port to run the dashboard on', '3000')
+  .command('ui')
+  .alias('dashboard')
+  .description('Start the Kiteretsu interactive UI')
+  .option('-p, --port <port>', 'Port to run the UI on', '3000')
   .action(async (options) => {
     console.log(chalk.bold.cyan('\n🚀 Launching Kiteretsu intelligence...'));
 
@@ -319,7 +320,7 @@ Before answering ANY questions about architecture, dependencies, or blast radius
 1. **Context**: Run \`kiteretsu context "<task>"\` before planning.
 2. **Read First**: Always read the files listed in the "Read First" section.
 3. **Verify**: Find related tests using \`kiteretsu tests --files <changed_files>\`.
-4. **Governance**: Record new architectural rules using \`kiteretsu record-rule <name> <description>\`.
+4. **Governance**: Use \`kiteretsu record-rule <name> <description>\` to save architectural rules. (DO NOT just write them in markdown files; use the tool so they can be enforced).
 5. **Learn**: Record task outcomes using \`kiteretsu record-task "<task>" <success|failure>\`.
 `;
 

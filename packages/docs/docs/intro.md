@@ -1,49 +1,51 @@
 ---
 sidebar_position: 0
-sidebar_label: What is Kiteretsu?
 ---
 
 # What is Kiteretsu?
 
-**Kiteretsu** is the missing intelligence layer between your codebase and your AI agents. 
+**Kiteretsu** is a high-performance **Local Intelligence Engine** designed to solve the "last mile" problem of AI-assisted engineering: **Context Blindness.**
 
-While modern AI agents (like Claude, Cursor, and Antigravity) are incredibly talented at writing code, they suffer from a fundamental problem: **They don't know your codebase as well as you do.**
+While AI agents (like Claude Code, Cursor, and Aider) are incredibly powerful, they are "outsiders" to your codebase. They don't know your hidden dependencies, your architectural rules, or the potential "Blast Radius" of a single change.
 
-Kiteretsu exists to give AI agents the "Senior Developer Perspective"—providing them with the bird's-eye view, the hidden dependencies, and the architectural rules that are usually only found in a human developer's head.
-
----
-
-## ❌ The Problem: "The Agent Tunnel Vision"
-
-When you give an AI agent a task in a large repository, it typically faces three massive hurdles:
-
-1.  **Blind Searching**: The agent doesn't know where to start, so it runs dozens of expensive `grep` or `find` commands, wasting time and tokens.
-2.  **Context Overload**: To be safe, agents often try to read too many files, exceeding their context window and becoming confused or "forgetful."
-3.  **Hidden Breakages**: An agent might change a function in one file, unaware that it's being used by 10 other crates in a different part of the workspace. This is the "Blast Radius" problem.
-
-## ✅ The Solution: "Codebase Intelligence"
-
-Kiteretsu acts as a **Digital Memory** for your project. It pre-calculates the relationships between every file, symbol, and dependency in your repository.
-
-When an agent is about to start a task, Kiteretsu provides it with a **Context Pack**:
-*   **Precision Guidance**: Exactly which files it needs to read (and why).
-*   **Safe Boundaries**: A warning of the "Blast Radius" (which other parts of the system might break).
-*   **Architectural Guardrails**: The specific rules it must follow for your project.
-
-## 🎯 The Purpose of Kiteretsu
-
-The ultimate goal of Kiteretsu is to **remove the friction of AI-assisted development.** 
-
-By ensuring that the agent always has the "Right Context at the Right Time," Kiteretsu makes agents:
-- **Faster**: No more waiting for blind searches.
-- **Cheaper**: Reduces token usage by up to 90%.
-- **Smarter**: Prevents architectural hallucinations and breaking changes.
+Kiteretsu bridges this gap by providing a deterministic, real-time map of your project's soul.
 
 ---
 
-## 🚀 Key Capabilities
+## The Problem: "Agent Tunnel Vision" 😵‍💫
 
-*   **Standardized Protocol**: A universal set of instructions that works with 15+ different AI agents.
-*   **Automated Verification**: Tells the agent exactly which tests to run to verify their work.
-*   **Governance**: Allows you to codify your project's architecture so agents never "drift" from your standards.
-*   **Seamless Integration**: Works via CLI, MCP Server, or direct file injection into your repo.
+When you ask an AI to "Refactor the login flow," it usually does one of two things:
+
+1. **The Shotgun Approach**: It tries to read every file in your repo. This is **slow**, **expensive** (thousands of tokens), and often **confuses** the agent.
+2. **The Guesswork Approach**: It only reads 2 files, misses a critical dependency in `auth-utils.ts`, and accidentally breaks your production login.
+
+### 💸 The Cost of Ignorance
+In large codebases, "Context Bloat" can cost you hundreds of dollars in wasted tokens and hours of debugging AI-generated hallucinations.
+
+---
+
+## The Solution: Kiteretsu 📦
+
+Kiteretsu acts as a **Local Context Curator**. It uses a sub-second SQLite dependency graph and semantic indexing to provide your agent with the **exact "Sniper" Context** it needs.
+
+### 🛰️ Precise Context Packs
+Instead of reading 50 files, Kiteretsu identifies the **5 critical files** and **3 architectural rules** that actually matter for your task.
+
+### 🛡️ Architectural Governance
+Kiteretsu enforces your project's "Laws." If you have a rule that "Database calls must never happen in the UI layer," Kiteretsu injects that rule directly into the agent's brain before it writes a single line of code.
+
+### ✨ Self-Healing Memory
+With its real-time watcher, Kiteretsu's memory is never stale. It updates its understanding of your code the millisecond you hit `Ctrl+S`.
+
+---
+
+## Why "Kiteretsu"? 💠
+
+In Japanese, **Kiteretsu (奇天烈)** means "Extremely Strange" or "Inventive." It’s named after the legendary inventor who could build complex machines from simple scrolls. 
+
+Kiteretsu does exactly that: it takes your "scrolls" (source code) and builds a complex, living machine of intelligence that your AI agents can finally understand.
+
+---
+
+## Ready to stop the guessing?
+[**Get Started with Kiteretsu →**](./getting-started/installation)

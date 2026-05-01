@@ -78,8 +78,8 @@ const config: Config = {
               to: '/docs/intro',
             },
             {
-              label: 'Context Generation',
-              to: '/docs/commands/context',
+              label: 'Interactive UI',
+              to: '/docs/commands/ui',
             },
           ],
         },

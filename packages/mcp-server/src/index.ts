@@ -55,14 +55,28 @@ export async function runMcpServer(customRootDir?: string) {
         },
         {
           name: 'record_rule',
-          description: 'Record an architectural rule for the repository',
+          description: 'MANDATORY: Use this tool to record a new architectural rule in the Kiteretsu database. DO NOT just write to a markdown file. Rules recorded here are automatically injected into the context of all future tasks for this project.',
           inputSchema: {
             type: 'object',
             properties: {
-              name: { type: 'string' },
-              description: { type: 'string' },
-              scope: { type: 'string', default: 'global' },
-              value: { type: 'string', default: '' }
+              name: { 
+                type: 'string',
+                description: 'A short, unique name for the rule (e.g., "no-db-in-ui")'
+              },
+              description: { 
+                type: 'string',
+                description: 'The full explanation of the rule and why it exists.'
+              },
+              scope: { 
+                type: 'string', 
+                description: 'The scope of the rule (global or a specific directory)',
+                default: 'global' 
+              },
+              value: { 
+                type: 'string', 
+                description: 'Optional technical value or pattern to enforce.',
+                default: '' 
+              }
             },
             required: ['name', 'description']
           }
