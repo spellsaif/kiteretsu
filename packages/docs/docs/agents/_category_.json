@@ -1,0 +1,8 @@
+{
+  "label": "Agent Integrations",
+  "position": 2,
+  "link": {
+    "type": "generated-index",
+    "description": "Guides for integrating Kiteretsu with your favorite AI agents and IDEs."
+  }
+}

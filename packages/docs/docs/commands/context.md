@@ -1,0 +1,34 @@
+# Context Generation
+
+The `context` command is the heart of the Kiteretsu intelligence layer. It is used to generate a **Context Pack** for a specific task.
+
+## Usage
+
+```bash
+kiteretsu context "<task_description>"
+```
+
+### Example
+```bash
+kiteretsu context "Refactor the authentication middleware to use JWT"
+```
+
+## How it Works
+
+When you run this command, Kiteretsu performs the following steps:
+
+1.  **Task Analysis**: Analyzes the task description to identify relevant symbols and modules.
+2.  **Dependency Mapping**: Traverses the dependency graph to find "Read First" files and high-risk areas.
+3.  **Blast Radius Analysis**: Identifies which files will be affected by changes in the identified modules.
+4.  **Rule Injection**: Injects any recorded architectural rules that are relevant to the identified files.
+5.  **Output**: Generates a concise, structured report for the AI agent.
+
+## Output Sections
+
+- **Read First**: A prioritized list of files the agent should read before starting.
+- **Blast Radius**: A warning about which files will be affected by changes.
+- **Rules**: Project-specific architectural guardrails.
+- **Warnings**: Staleness warnings if the index is out of date.
+
+## Tokens Saved
+By providing a curated context, Kiteretsu typically reduces the amount of text an agent needs to read by **70-90%**, significantly lowering your token costs and improving agent speed.

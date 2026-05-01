@@ -1,0 +1,245 @@
+@import url('https://rsms.me/inter/inter.css');
+
+:root {
+  --ifm-color-primary: #0070f3;
+  --ifm-color-primary-dark: #0060df;
+  --ifm-color-primary-darker: #0056c7;
+  --ifm-color-primary-darkest: #0047a5;
+  --ifm-color-primary-light: #3291ff;
+  --ifm-color-primary-lighter: #66b1ff;
+  --ifm-color-primary-lightest: #99ccff;
+  
+  --ifm-font-family-base: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  --ifm-font-family-monospace: 'JetBrains Mono', SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  
+  --ifm-spacing-horizontal: 1.5rem;
+  --ifm-code-font-size: 0.875rem;
+  --ifm-heading-font-weight: 700;
+  
+  --site-border-color: #eaeaea;
+  --ifm-navbar-background-color: #fff;
+  --ifm-background-color: #fff;
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #fff;
+  --ifm-color-primary-dark: #eee;
+  --ifm-color-primary-darker: #ddd;
+  --ifm-color-primary-darkest: #ccc;
+  --ifm-color-primary-light: #fff;
+  --ifm-color-primary-lighter: #fff;
+  --ifm-color-primary-lightest: #fff;
+  
+  --ifm-background-color: #000;
+  --ifm-navbar-background-color: rgba(0, 0, 0, 0.8);
+  --ifm-footer-background-color: #000;
+  --site-border-color: #333;
+  
+  --docusaurus-highlighted-code-line-bg: rgba(255, 255, 255, 0.1);
+}
+
+/* Navbar: Next.js Style */
+.navbar {
+  height: 64px;
+  border-bottom: 1px solid var(--site-border-color);
+  backdrop-filter: saturate(180%) blur(5px);
+  box-shadow: none;
+}
+
+.navbar__title {
+  font-weight: 700;
+  letter-spacing: -0.05em;
+  font-size: 1.2rem;
+}
+
+.navbar__brand {
+  margin-right: 2rem;
+}
+
+.navbar__item {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #666;
+  transition: color 0.15s ease;
+}
+
+[data-theme='dark'] .navbar__item {
+  color: #888;
+}
+
+.navbar__item:hover,
+.navbar__item--active {
+  color: var(--ifm-color-primary) !important;
+}
+
+/* Sidebar: Clean & Minimal */
+.theme-doc-sidebar-container {
+  border-right: 1px solid var(--site-border-color) !important;
+}
+
+.menu__list-item {
+  margin-top: 4px;
+}
+
+.menu__link {
+  font-size: 0.875rem;
+  font-weight: 400;
+  color: #666;
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+[data-theme='dark'] .menu__link {
+  color: #888;
+}
+
+.menu__link--active {
+  background: rgba(0, 112, 243, 0.1) !important;
+  color: #0070f3 !important;
+  font-weight: 600;
+}
+
+[data-theme='dark'] .menu__link--active {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #fff !important;
+}
+
+/* Main Content: High Readability */
+.theme-doc-markdown {
+  max-width: 768px; /* Tighter width like Next.js */
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+h1 {
+  font-size: 3rem;
+  letter-spacing: -0.05em;
+  margin-bottom: 2rem;
+  font-weight: 800;
+}
+
+/* Code Blocks: Optimized for Black Background */
+pre {
+  background-color: #000 !important;
+  border: 1px solid #333;
+  border-radius: 8px;
+  margin: 2rem 0;
+  padding: 1.25rem !important;
+  color: #fff !important; /* Force base text to white */
+}
+
+/* Prism Token Overrides for High Visibility */
+.token.plain,
+.token.function,
+.token.command {
+  color: #fff !important; /* Force commands to white */
+}
+
+.token.string {
+  color: #3291ff !important; /* Vibrant Blue for strings */
+}
+
+.token.keyword {
+  color: #ff0080 !important; /* Vercel Pink for keywords */
+}
+
+.token.comment {
+  color: #666 !important; /* Distinct but readable gray for comments */
+}
+
+/* Inline Code: High Contrast & Vibrant */
+code {
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.9rem;
+  background-color: rgba(0, 112, 243, 0.1);
+  border: 1px solid rgba(0, 112, 243, 0.2);
+  color: #0070f3; /* Next.js Blue */
+  padding: 0.2rem 0.4rem;
+  border-radius: 5px;
+  font-weight: 500;
+}
+
+/* Ensure pre blocks don't inherit inline styles */
+pre code {
+  background-color: transparent !important;
+  border: none !important;
+  color: inherit !important;
+  padding: 0 !important;
+  font-weight: 400;
+}
+
+[data-theme='dark'] code {
+  color: #3291ff; /* Brighter blue for dark mode */
+  background-color: rgba(50, 145, 255, 0.1);
+  border: 1px solid rgba(50, 145, 255, 0.2);
+}
+
+/* Hero Section: The Vercel Punch */
+.hero--primary {
+  background: #fff;
+  color: #000;
+  padding: 6rem 0;
+  text-align: center;
+}
+
+[data-theme='dark'] .hero--primary {
+  background: #000;
+  color: #fff;
+}
+
+.hero__title {
+  font-size: 5rem;
+  font-weight: 800;
+  letter-spacing: -0.07em;
+  line-height: 1;
+}
+
+.hero__subtitle {
+  font-size: 1.25rem;
+  color: #666;
+  margin-bottom: 2.5rem;
+}
+
+[data-theme='dark'] .hero__subtitle {
+  color: #888;
+}
+
+/* Buttons: Next.js Action */
+.button--secondary {
+  background: #000;
+  color: #fff;
+  border: 1px solid #000;
+  font-weight: 600;
+  padding: 0.75rem 2rem;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+[data-theme='dark'] .button--secondary {
+  background: #fff;
+  color: #000;
+  border: 1px solid #fff;
+}
+
+.button--secondary:hover {
+  background: transparent;
+  color: #000;
+}
+
+[data-theme='dark'] .button--secondary:hover {
+  background: transparent;
+  color: #fff;
+}
+
+/* Category Cards */
+.card {
+  border: 1px solid var(--site-border-color);
+  background: transparent;
+  box-shadow: none;
+  border-radius: 12px;
+  transition: border-color 0.2s ease;
+}
+
+.card:hover {
+  border-color: var(--ifm-color-primary);
+}
