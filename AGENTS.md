@@ -1,6 +1,9 @@
 # Kiteretsu Agent Instructions 📦
 
-Before working on any task in this repository, you must request a **Context Pack** from Kiteretsu. This will ensure you have the smallest, most accurate context needed to complete the task safely.
+## ⚠️ MANDATORY PROTOCOL
+Before answering ANY question about codebase architecture, dependencies, or blast radius, you **MUST** call Kiteretsu (via the `get_context_pack` tool or the `kiteretsu context` command). 
+
+**NEVER** rely on your internal memory or "logical guesses" for these tasks. The source code is the only truth, and Kiteretsu is your only window into it.
 
 ## 🛠 Usage Instructions
 
@@ -23,8 +26,18 @@ After making changes, run the recommended tests:
 kiteretsu tests --files path/to/changed/file.ts
 ```
 
-### 4. Record Outcome
+### 4. Governance
+Record any new architectural patterns or rules discovered during the task:
+```bash
+kiteretsu record-rule <name> <description>
+```
+
+### 5. Record Outcome
 After completing a task (success or failure), record the outcome to help Kiteretsu learn:
+```bash
+kiteretsu record-task "task description" success
+```
+Or use the MCP tool:
 `record_task_outcome(task="...", result="success", notes="...")`
 
 ---

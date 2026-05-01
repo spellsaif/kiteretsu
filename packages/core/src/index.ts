@@ -83,7 +83,7 @@ export class Kiteretsu {
 
   async indexFile(filePath: string): Promise<void> {
     const knex = this.db.getKnex();
-    
+
     // Normalize incoming path
     let fullPath = path.resolve(filePath).replace(/\\/g, '/');
     if (process.platform === 'win32' && /^[a-z]:/i.test(fullPath)) {
@@ -114,7 +114,7 @@ export class Kiteretsu {
 
     // 2. Parse symbols & imports
     const parser = await this.getParser();
-    
+
     // Symbols
     const symbols = await parser.parseSymbols(fullPath);
     await knex('symbols').where({ file_id: fileId }).delete();
@@ -174,15 +174,15 @@ export class Kiteretsu {
         }
       } else if (fileExt === '.py') {
         // ── Python Resolution ──
-        const resolved = this.resolveImportToPath(path.dirname(fullPath), sourceRaw) || 
-                         this.resolveImportToPath(this.rootDir, sourceRaw);
+        const resolved = this.resolveImportToPath(path.dirname(fullPath), sourceRaw) ||
+          this.resolveImportToPath(this.rootDir, sourceRaw);
         if (resolved) potentialTargets.push(resolved);
       } else if (fileExt === '.rs') {
         // ── Rust Resolution ──
         const rustPath = sourceRaw.replace(/::/g, '/');
         let searchBase = this.rootDir;
         let relativePath = rustPath;
-        
+
         if (sourceRaw.startsWith('crate')) {
           searchBase = this.findRustCrateRoot(fullPath);
           relativePath = rustPath.replace(/^crate/, 'src');
@@ -199,7 +199,7 @@ export class Kiteretsu {
           if (targetCrateDir) {
             searchBase = targetCrateDir;
             // Most crate imports target the lib.rs in src
-            relativePath = 'src/lib'; 
+            relativePath = 'src/lib';
           }
         }
 
@@ -212,7 +212,7 @@ export class Kiteretsu {
         if (goMod && sourceRaw.startsWith(goMod)) {
           localPath = sourceRaw.slice(goMod.length + 1);
         }
-        
+
         const resolvedDir = this.resolveImportToPath(this.rootDir, localPath);
         if (resolvedDir && fs.statSync(resolvedDir).isDirectory()) {
           // Link to ALL files in the Go package directory
@@ -225,8 +225,8 @@ export class Kiteretsu {
         }
       } else {
         // ── Generic ──
-        const resolved = this.resolveImportToPath(path.dirname(fullPath), sourceRaw) || 
-                         this.resolveImportToPath(this.rootDir, sourceRaw);
+        const resolved = this.resolveImportToPath(path.dirname(fullPath), sourceRaw) ||
+          this.resolveImportToPath(this.rootDir, sourceRaw);
         if (resolved) potentialTargets.push(resolved);
       }
 
@@ -239,11 +239,11 @@ export class Kiteretsu {
 
         let targetRelative = path.relative(this.rootDir, targetPath).replace(/\\/g, '/');
         if (targetRelative.startsWith('./')) targetRelative = targetRelative.slice(2);
-        
+
         const target = await knex('files')
           .whereRaw('LOWER(path) = ?', [targetRelative.toLowerCase()])
           .first();
-        
+
         if (target && target.id !== fileId) { // Avoid self-loops
           // Avoid duplicates
           const existing = await knex('graph_edges').where({
@@ -251,7 +251,7 @@ export class Kiteretsu {
             target_id: target.id,
             relation: 'imports'
           }).first();
-          
+
           if (!existing) {
             await knex('graph_edges').insert({
               source_type: 'file',
@@ -275,7 +275,7 @@ export class Kiteretsu {
     if (process.platform === 'win32' && /^[a-z]:/i.test(fullPath)) {
       fullPath = fullPath[0].toLowerCase() + fullPath.slice(1);
     }
-    
+
     const relativePath = path.relative(this.rootDir, fullPath).replace(/\\/g, '/');
     const file = await knex('files').where({ path: relativePath }).first();
 
@@ -347,12 +347,12 @@ export class Kiteretsu {
 
     for (const relativePath of files) {
       const fullPath = path.resolve(this.rootDir, relativePath);
-      
+
       try {
         await this.indexFile(fullPath);
       } catch (error: any) {
         const debugLog = path.resolve(this.rootDir, '.kiteretsu', 'debug.log');
-        try { fs.appendFileSync(debugLog, `[Indexer] Error indexing ${relativePath}: ${error.message}\n`); } catch {} 
+        try { fs.appendFileSync(debugLog, `[Indexer] Error indexing ${relativePath}: ${error.message}\n`); } catch { }
       }
     }
 
@@ -388,7 +388,7 @@ export class Kiteretsu {
         } catch (e) { }
       }
     }
-    
+
     // Also include root package
     const rootPkgPath = path.join(this.rootDir, 'package.json');
     if (fs.existsSync(rootPkgPath)) {
@@ -416,7 +416,7 @@ export class Kiteretsu {
           // Also handle snake_case versions (common in Rust imports)
           this.crateMap.set(crateName.replace(/-/g, '_'), crateDir);
         }
-      } catch (e) {}
+      } catch (e) { }
     }
   }
 
@@ -440,9 +440,9 @@ export class Kiteretsu {
    */
   private resolveImportToPath(baseDir: string, relativePath: string): string | null {
     if (!relativePath) return null;
-    
+
     let currentPath = path.resolve(baseDir, relativePath);
-    
+
     // Try full path first (with extensions)
     const exact = this.resolveFilePath(currentPath);
     if (exact) return exact;
@@ -459,7 +459,7 @@ export class Kiteretsu {
       const candidateBase = path.resolve(baseDir, parts.join('/'));
       const found = this.resolveFilePath(candidateBase);
       if (found) return found;
-      
+
       if (fs.existsSync(candidateBase) && fs.statSync(candidateBase).isDirectory()) {
         return candidateBase;
       }
@@ -471,8 +471,8 @@ export class Kiteretsu {
   /** Resolve a base path (without extension) to an actual file on disk. */
   private resolveFilePath(targetBase: string): string | null {
     const exts = [
-      '', '.ts', '.tsx', '.js', '.jsx', 
-      '.py', '.go', '.rs', '.java', '.rb', 
+      '', '.ts', '.tsx', '.js', '.jsx',
+      '.py', '.go', '.rs', '.java', '.rb',
       '.c', '.cpp', '.cs', '.php', '.swift', '.kt', '.scala'
     ];
     for (const ext of exts) {
@@ -508,7 +508,7 @@ export class Kiteretsu {
     // JS/TS
     if (fs.existsSync(path.join(this.rootDir, 'package.json'))) {
       base.push('**/node_modules/**', '**/dist/**', '**/build/**',
-                '**/pnpm-lock.yaml', '**/package-lock.json', '**/yarn.lock');
+        '**/pnpm-lock.yaml', '**/package-lock.json', '**/yarn.lock');
     }
     // Rust
     if (fs.existsSync(path.join(this.rootDir, 'Cargo.toml'))) {
@@ -516,10 +516,10 @@ export class Kiteretsu {
     }
     // Python
     if (fs.existsSync(path.join(this.rootDir, 'pyproject.toml')) ||
-        fs.existsSync(path.join(this.rootDir, 'requirements.txt')) ||
-        fs.existsSync(path.join(this.rootDir, 'setup.py'))) {
+      fs.existsSync(path.join(this.rootDir, 'requirements.txt')) ||
+      fs.existsSync(path.join(this.rootDir, 'setup.py'))) {
       base.push('**/__pycache__/**', '**/.venv/**', '**/venv/**',
-                '**/*.pyc', '**/*.egg-info/**');
+        '**/*.pyc', '**/*.egg-info/**');
     }
     // Go
     if (fs.existsSync(path.join(this.rootDir, 'go.mod'))) {
@@ -527,8 +527,8 @@ export class Kiteretsu {
     }
     // Java/Kotlin
     if (fs.existsSync(path.join(this.rootDir, 'pom.xml')) ||
-        fs.existsSync(path.join(this.rootDir, 'build.gradle')) ||
-        fs.existsSync(path.join(this.rootDir, 'build.gradle.kts'))) {
+      fs.existsSync(path.join(this.rootDir, 'build.gradle')) ||
+      fs.existsSync(path.join(this.rootDir, 'build.gradle.kts'))) {
       base.push('**/target/**', '**/.gradle/**', '**/build/**');
     }
     // Swift
@@ -562,7 +562,7 @@ export class Kiteretsu {
 
   async getContextPack(task: string) {
     const knex = this.db.getKnex();
-    
+
     // 1. Semantic Tokenization
     const STOP_WORDS = new Set(['implement', 'create', 'update', 'delete', 'change', 'fix', 'add', 'remove', 'the', 'and', 'for', 'with', 'from', 'this', 'that', 'should', 'would', 'could', 'want', 'need', 'task', 'description', 'issue', 'bug', 'feature']);
     const rawKeywords = task.toLowerCase()
@@ -587,7 +587,7 @@ export class Kiteretsu {
 
     // 3. Multi-Field Weighted Scoring
     const scores = new Map<number, { score: number; path: string; summary: string; stale: boolean }>();
-    
+
     for (const kw of rawKeywords) {
       const idf = keywordSignificance.get(kw) || 1;
 
