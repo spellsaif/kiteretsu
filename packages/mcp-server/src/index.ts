@@ -7,167 +7,171 @@ import {
 import { Kiteretsu } from '@kiteretsu/core';
 import path from 'path';
 
-const rootDir = process.cwd();
-const kiteretsu = new Kiteretsu({ rootDir });
+export async function runMcpServer(customRootDir?: string) {
+  const finalRootDir = customRootDir || process.cwd();
+  const kiteretsu = new Kiteretsu({ rootDir: finalRootDir });
 
-const server = new Server(
-  {
-    name: 'kiteretsu',
-    version: '0.1.0',
-  },
-  {
-    capabilities: {
-      tools: {},
+  const server = new Server(
+    {
+      name: 'kiteretsu',
+      version: '0.1.0',
     },
-  }
-);
+    {
+      capabilities: {
+        tools: {},
+      },
+    }
+  );
 
-server.setRequestHandler(ListToolsRequestSchema, async () => {
-  return {
-    tools: [
-      {
-        name: 'get_context_pack',
-        description: 'Generate a Context Pack for a specific coding task',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            task: {
-              type: 'string',
-              description: 'The description of the task to be performed',
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
+    return {
+      tools: [
+        {
+          name: 'get_context_pack',
+          description: 'Generate a Context Pack for a specific coding task',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              task: {
+                type: 'string',
+                description: 'The description of the task to be performed',
+              },
+              budget_tokens: {
+                type: 'number',
+                description: 'Maximum tokens for the context pack',
+                default: 6000,
+              },
             },
-            budget_tokens: {
-              type: 'number',
-              description: 'Maximum tokens for the context pack',
-              default: 6000,
+            required: ['task'],
+          },
+        },
+        {
+          name: 'index_repository',
+          description: 'Scan and index the current repository',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+          },
+        },
+        {
+          name: 'record_rule',
+          description: 'Record an architectural rule for the repository',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              description: { type: 'string' },
+              scope: { type: 'string', default: 'global' },
+              value: { type: 'string', default: '' }
             },
-          },
-          required: ['task'],
+            required: ['name', 'description']
+          }
         },
-      },
-      {
-        name: 'index_repository',
-        description: 'Scan and index the current repository',
-        inputSchema: {
-          type: 'object',
-          properties: {},
+        {
+          name: 'record_task_outcome',
+          description: 'Record the outcome of a coding task to help the agent learn',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              task: { type: 'string' },
+              result: { type: 'string', enum: ['success', 'failure'] },
+              notes: { type: 'string', default: '' },
+              type: { type: 'string', default: 'unknown' }
+            },
+            required: ['task', 'result']
+          }
         },
-      },
-      {
-        name: 'record_rule',
-        description: 'Record an architectural rule for the repository',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            name: { type: 'string' },
-            description: { type: 'string' },
-            scope: { type: 'string', default: 'global' },
-            value: { type: 'string', default: '' }
-          },
-          required: ['name', 'description']
+        {
+          name: 'get_related_tests',
+          description: 'Find test files related to specific source files',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              files: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'The source files to find tests for'
+              }
+            },
+            required: ['files']
+          }
         }
-      },
-      {
-        name: 'record_task_outcome',
-        description: 'Record the outcome of a coding task to help the agent learn',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            task: { type: 'string' },
-            result: { type: 'string', enum: ['success', 'failure'] },
-            notes: { type: 'string', default: '' },
-            type: { type: 'string', default: 'unknown' }
-          },
-          required: ['task', 'result']
-        }
-      },
-      {
-        name: 'get_related_tests',
-        description: 'Find test files related to specific source files',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            files: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'The source files to find tests for'
-            }
-          },
-          required: ['files']
-        }
+      ],
+    };
+  });
+
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const { name, arguments: args } = request.params;
+    await kiteretsu.init();
+
+    try {
+      if (name === 'get_context_pack') {
+        const task = (args as any).task;
+        const pack = await kiteretsu.getContextPack(task);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(pack, null, 2),
+            },
+          ],
+        };
       }
-    ],
-  };
-});
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
+      if (name === 'index_repository') {
+        await kiteretsu.index();
+        return {
+          content: [{ type: 'text', text: 'Repository indexing complete.' }],
+        };
+      }
 
-  try {
-    if (name === 'get_context_pack') {
-      const task = (args as any).task;
-      const pack = await kiteretsu.getContextPack(task);
+      if (name === 'record_rule') {
+        const { name: ruleName, description, scope = 'global', value = '' } = args as any;
+        await kiteretsu.addRule(ruleName, description, scope, value);
+        return {
+          content: [{ type: 'text', text: 'Rule recorded successfully.' }],
+        };
+      }
+
+      if (name === 'record_task_outcome') {
+        const { task, result, type = 'unknown', notes = '' } = args as any;
+        await kiteretsu.recordTaskOutcome(task, type, result, notes);
+        return {
+          content: [{ type: 'text', text: 'Task outcome recorded successfully.' }],
+        };
+      }
+
+      if (name === 'get_related_tests') {
+        const { files } = args as any;
+        const tests = await kiteretsu.getRelatedTests(files);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(tests, null, 2) }],
+        };
+      }
+
+      throw new Error(`Unknown tool: ${name}`);
+    } catch (error: any) {
       return {
         content: [
           {
             type: 'text',
-            text: JSON.stringify(pack, null, 2),
+            text: `Error: ${error.message}`,
           },
         ],
+        isError: true,
       };
     }
+  });
 
-    if (name === 'index_repository') {
-      await kiteretsu.index();
-      return {
-        content: [{ type: 'text', text: 'Repository indexing complete.' }],
-      };
-    }
-
-    if (name === 'record_rule') {
-      const { name: ruleName, description, scope = 'global', value = '' } = args as any;
-      await kiteretsu.addRule(ruleName, description, scope, value);
-      return {
-        content: [{ type: 'text', text: 'Rule recorded successfully.' }],
-      };
-    }
-
-    if (name === 'record_task_outcome') {
-      const { task, result, type = 'unknown', notes = '' } = args as any;
-      await kiteretsu.recordTaskOutcome(task, type, result, notes);
-      return {
-        content: [{ type: 'text', text: 'Task outcome recorded successfully.' }],
-      };
-    }
-
-    if (name === 'get_related_tests') {
-      const { files } = args as any;
-      const tests = await kiteretsu.getRelatedTests(files);
-      return {
-        content: [{ type: 'text', text: JSON.stringify(tests, null, 2) }],
-      };
-    }
-
-    throw new Error(`Unknown tool: ${name}`);
-  } catch (error: any) {
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Error: ${error.message}`,
-        },
-      ],
-      isError: true,
-    };
-  }
-});
-
-async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error('Kiteretsu MCP server running on stdio');
 }
 
-main().catch((error) => {
-  console.error('Fatal error in main():', error);
-  process.exit(1);
-});
+// Auto-start if run directly
+if (require.main === module) {
+  runMcpServer().catch((error) => {
+    console.error('Fatal error in MCP server:', error);
+    process.exit(1);
+  });
+}
