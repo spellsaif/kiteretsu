@@ -485,7 +485,10 @@ export class CodeParser {
         // Go: strip surrounding quotes (already done above)
         break;
       case '.rs':
-        // Rust: keep the :: notation as-is, indexer handles resolution
+        // Rust: strip ' as alias' and '{ ... }' lists
+        source = source.split(/\s+as\s+/)[0].trim();
+        source = source.replace(/\{[\s\S]*\}/g, '').trim();
+        source = source.replace(/::$/, '');
         break;
       case '.java':
       case '.kt':

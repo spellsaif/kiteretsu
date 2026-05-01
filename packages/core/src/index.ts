@@ -18,6 +18,7 @@ export class Kiteretsu {
   private rootDir: string;
   private config: KiteretsuConfig;
   private packageMap: Map<string, string> = new Map();
+  private crateMap: Map<string, string> = new Map();
 
   constructor(config: KiteretsuConfig) {
     // Normalize rootDir for consistent path comparisons (especially on Windows)
@@ -183,7 +184,7 @@ export class Kiteretsu {
         let relativePath = rustPath;
         
         if (sourceRaw.startsWith('crate')) {
-          searchBase = this.rootDir;
+          searchBase = this.findRustCrateRoot(fullPath);
           relativePath = rustPath.replace(/^crate/, 'src');
         } else if (sourceRaw.startsWith('super')) {
           searchBase = path.dirname(fullPath);
@@ -191,6 +192,15 @@ export class Kiteretsu {
         } else if (sourceRaw.startsWith('self')) {
           searchBase = path.dirname(fullPath);
           relativePath = rustPath.replace(/^self/, '.');
+        } else {
+          // Check if it starts with a known crate name in the workspace
+          const firstPart = sourceRaw.split('::')[0];
+          const targetCrateDir = this.crateMap.get(firstPart);
+          if (targetCrateDir) {
+            searchBase = targetCrateDir;
+            // Most crate imports target the lib.rs in src
+            relativePath = 'src/lib'; 
+          }
         }
 
         const resolved = this.resolveImportToPath(searchBase, relativePath);
@@ -278,6 +288,7 @@ export class Kiteretsu {
   async init() {
     await this.db.initialize();
     await this.populatePackageMap();
+    await this.discoverRustCrates();
 
     // Create default config if it doesn't exist
     const configPath = path.join(this.rootDir, '.kiteretsu', 'config.json');
@@ -297,6 +308,7 @@ export class Kiteretsu {
 
   async index(): Promise<{ files: number; symbols: number; edges: number }> {
     await this.populatePackageMap();
+    await this.discoverRustCrates();
     const files = await this.scanner.scan();
     const knex = this.db.getKnex();
 
@@ -387,6 +399,39 @@ export class Kiteretsu {
         }
       } catch (e) { }
     }
+  }
+
+  private async discoverRustCrates() {
+    this.crateMap.clear();
+    const cargoFiles = await this.scanner.scan('**/Cargo.toml');
+    for (const relPath of cargoFiles) {
+      const fullPath = path.resolve(this.rootDir, relPath);
+      try {
+        const content = await fs.readFile(fullPath, 'utf8');
+        const nameMatch = content.match(/^name\s*=\s*["'](.+?)["']/m);
+        if (nameMatch) {
+          const crateName = nameMatch[1];
+          const crateDir = path.dirname(fullPath);
+          this.crateMap.set(crateName, crateDir);
+          // Also handle snake_case versions (common in Rust imports)
+          this.crateMap.set(crateName.replace(/-/g, '_'), crateDir);
+        }
+      } catch (e) {}
+    }
+  }
+
+  /** Finds the nearest directory containing Cargo.toml or src/ (Rust crate root) */
+  private findRustCrateRoot(filePath: string): string {
+    let current = path.dirname(filePath);
+    while (current.length >= this.rootDir.length) {
+      if (fs.existsSync(path.join(current, 'Cargo.toml')) || fs.existsSync(path.join(current, 'src'))) {
+        return current;
+      }
+      const parent = path.dirname(current);
+      if (parent === current) break;
+      current = parent;
+    }
+    return this.rootDir;
   }
 
   /** 

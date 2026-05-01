@@ -12,8 +12,8 @@ export interface ScanOptions {
 export class Scanner {
   constructor(private options: ScanOptions) {}
 
-  async scan() {
-    const include = this.options.include || ['**/*'];
+  async scan(pattern?: string | string[]) {
+    const include = pattern || this.options.include || ['**/*'];
     const exclude = this.options.exclude || ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**', '**/.kiteretsu/**', '**/package-lock.json', '**/scratch/**', '**/temp/**'];
 
     const files = await globby(include, {
