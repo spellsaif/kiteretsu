@@ -1,10 +1,15 @@
-import Parser from 'tree-sitter';
+import { Parser, Language, Query } from 'web-tree-sitter';
 import fs from 'fs-extra';
 import path from 'path';
 import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
 
 const require = createRequire(import.meta.url);
 const LOG_PATH = path.resolve(process.cwd(), '.kiteretsu', 'debug.log');
+
+function debugLog(msg: string) {
+  try { fs.appendFileSync(LOG_PATH, msg + '\n'); } catch {}
+}
 
 export interface SymbolInfo {
   name: string;
@@ -13,171 +18,383 @@ export interface SymbolInfo {
   endLine: number;
 }
 
-export class CodeParser {
-  private parsers: Map<string, Parser> = new Map();
-  private languages: Map<string, any> = new Map();
+// ─── Language Configuration ───────────────────────────────────────────────────
+// Maps file extensions to their WASM grammar file name and query definitions.
+// This is the single source of truth for all language support.
 
-  constructor() {
+interface LanguageConfig {
+  wasmFile: string;      // Filename inside tree-sitter-wasms/out/
+  symbolQuery: string;   // Tree-sitter S-expression for symbol extraction
+  importQuery: string;   // Tree-sitter S-expression for import extraction
+}
+
+const LANGUAGE_CONFIG: Record<string, LanguageConfig> = {
+  // ── TypeScript / JavaScript ─────────────────────────────────────────────────
+  '.ts': {
+    wasmFile: 'tree-sitter-typescript.wasm',
+    symbolQuery: `
+      (function_declaration name: (identifier) @func.name)
+      (class_declaration name: (type_identifier) @class.name)
+      (interface_declaration name: (type_identifier) @interface.name)
+      (method_definition name: (property_identifier) @method.name)
+      (variable_declarator name: (identifier) @var.name)
+    `,
+    importQuery: `
+      (import_statement source: (string) @source)
+      (export_statement source: (string) @source)
+    `,
+  },
+  '.tsx': {
+    wasmFile: 'tree-sitter-tsx.wasm',
+    symbolQuery: `
+      (function_declaration name: (identifier) @func.name)
+      (class_declaration name: (type_identifier) @class.name)
+      (interface_declaration name: (type_identifier) @interface.name)
+      (method_definition name: (property_identifier) @method.name)
+      (variable_declarator name: (identifier) @var.name)
+    `,
+    importQuery: `
+      (import_statement source: (string) @source)
+      (export_statement source: (string) @source)
+    `,
+  },
+  '.js': {
+    wasmFile: 'tree-sitter-javascript.wasm',
+    symbolQuery: `
+      (function_declaration name: (identifier) @func.name)
+      (class_declaration name: (identifier) @class.name)
+      (method_definition name: (property_identifier) @method.name)
+      (variable_declarator name: (identifier) @var.name)
+    `,
+    importQuery: `
+      (import_statement source: (string) @source)
+      (export_statement source: (string) @source)
+    `,
+  },
+  '.jsx': {
+    wasmFile: 'tree-sitter-javascript.wasm',
+    symbolQuery: `
+      (function_declaration name: (identifier) @func.name)
+      (class_declaration name: (identifier) @class.name)
+      (method_definition name: (property_identifier) @method.name)
+      (variable_declarator name: (identifier) @var.name)
+    `,
+    importQuery: `
+      (import_statement source: (string) @source)
+      (export_statement source: (string) @source)
+    `,
+  },
+
+  // ── Python ──────────────────────────────────────────────────────────────────
+  '.py': {
+    wasmFile: 'tree-sitter-python.wasm',
+    symbolQuery: `
+      (function_definition name: (identifier) @func.name)
+      (class_definition name: (identifier) @class.name)
+    `,
+    importQuery: `
+      (import_statement name: (dotted_name) @source)
+      (import_from_statement module_name: (dotted_name) @source)
+      (import_from_statement module_name: (relative_import) @source)
+    `,
+  },
+
+  // ── Rust ────────────────────────────────────────────────────────────────────
+  // For Rust, use_declaration has an 'argument' field that can be:
+  //   - scoped_identifier (e.g. crate::models::User)
+  //   - scoped_use_list (e.g. crate::models::{User, Post})
+  //   - use_wildcard (e.g. crate::models::*)
+  //   - use_as_clause (e.g. crate::models::User as MyUser)
+  //   - identifier, self, super, crate
+  // We capture the entire use_declaration and extract the text programmatically.
+  '.rs': {
+    wasmFile: 'tree-sitter-rust.wasm',
+    symbolQuery: `
+      (function_item name: (identifier) @func.name)
+      (struct_item name: (type_identifier) @struct.name)
+      (impl_item type: (type_identifier) @class.name)
+      (trait_item name: (type_identifier) @interface.name)
+      (enum_item name: (type_identifier) @class.name)
+    `,
+    importQuery: `
+      (use_declaration argument: (_) @source)
+    `,
+  },
+
+  // ── Go ──────────────────────────────────────────────────────────────────────
+  // Go import_spec has a 'path' field that is an interpreted_string_literal
+  '.go': {
+    wasmFile: 'tree-sitter-go.wasm',
+    symbolQuery: `
+      (function_declaration name: (identifier) @func.name)
+      (method_declaration name: (field_identifier) @method.name)
+      (type_declaration (type_spec name: (type_identifier) @type.name))
+    `,
+    importQuery: `
+      (import_spec path: (interpreted_string_literal) @source)
+    `,
+  },
+
+  // ── Java ────────────────────────────────────────────────────────────────────
+  '.java': {
+    wasmFile: 'tree-sitter-java.wasm',
+    symbolQuery: `
+      (method_declaration name: (identifier) @method.name)
+      (class_declaration name: (identifier) @class.name)
+      (interface_declaration name: (identifier) @interface.name)
+    `,
+    importQuery: `
+      (import_declaration (scoped_identifier) @source)
+    `,
+  },
+
+  // ── Ruby ────────────────────────────────────────────────────────────────────
+  '.rb': {
+    wasmFile: 'tree-sitter-ruby.wasm',
+    symbolQuery: `
+      (method name: (identifier) @method.name)
+      (class name: (constant) @class.name)
+      (module name: (constant) @module.name)
+    `,
+    importQuery: `
+      (call method: (identifier) @_method arguments: (argument_list (string (string_content) @source)) (#eq? @_method "require"))
+      (call method: (identifier) @_method arguments: (argument_list (string (string_content) @source)) (#eq? @_method "require_relative"))
+    `,
+  },
+
+  // ── PHP ─────────────────────────────────────────────────────────────────────
+  '.php': {
+    wasmFile: 'tree-sitter-php.wasm',
+    symbolQuery: `
+      (function_definition name: (name) @func.name)
+      (class_declaration name: (name) @class.name)
+      (method_declaration name: (name) @method.name)
+    `,
+    importQuery: `
+      (namespace_use_declaration (namespace_use_clause (qualified_name) @source))
+    `,
+  },
+
+  // ── C ───────────────────────────────────────────────────────────────────────
+  '.c': {
+    wasmFile: 'tree-sitter-c.wasm',
+    symbolQuery: `
+      (function_definition declarator: (function_declarator declarator: (identifier) @func.name))
+      (struct_specifier name: (type_identifier) @struct.name)
+    `,
+    importQuery: `
+      (preproc_include path: (string_literal) @source)
+      (preproc_include path: (system_lib_string) @source)
+    `,
+  },
+
+  // ── C++ ─────────────────────────────────────────────────────────────────────
+  '.cpp': {
+    wasmFile: 'tree-sitter-cpp.wasm',
+    symbolQuery: `
+      (function_definition declarator: (function_declarator declarator: (identifier) @func.name))
+      (class_specifier name: (type_identifier) @class.name)
+      (struct_specifier name: (type_identifier) @struct.name)
+    `,
+    importQuery: `
+      (preproc_include path: (string_literal) @source)
+      (preproc_include path: (system_lib_string) @source)
+    `,
+  },
+
+  // ── C# ──────────────────────────────────────────────────────────────────────
+  '.cs': {
+    wasmFile: 'tree-sitter-c_sharp.wasm',
+    symbolQuery: `
+      (method_declaration name: (identifier) @method.name)
+      (class_declaration name: (identifier) @class.name)
+      (interface_declaration name: (identifier) @interface.name)
+    `,
+    importQuery: `
+      (using_directive (qualified_name) @source)
+    `,
+  },
+
+  // ── Swift ───────────────────────────────────────────────────────────────────
+  '.swift': {
+    wasmFile: 'tree-sitter-swift.wasm',
+    symbolQuery: `
+      (function_declaration name: (simple_identifier) @func.name)
+      (class_declaration name: (type_identifier) @class.name)
+      (protocol_declaration name: (type_identifier) @interface.name)
+    `,
+    importQuery: `
+      (import_declaration (identifier) @source)
+    `,
+  },
+
+  // ── Kotlin ──────────────────────────────────────────────────────────────────
+  '.kt': {
+    wasmFile: 'tree-sitter-kotlin.wasm',
+    symbolQuery: `
+      (function_declaration (simple_identifier) @func.name)
+      (class_declaration (type_identifier) @class.name)
+    `,
+    importQuery: `
+      (import_header (identifier) @source)
+    `,
+  },
+
+  // ── Scala ───────────────────────────────────────────────────────────────────
+  '.scala': {
+    wasmFile: 'tree-sitter-scala.wasm',
+    symbolQuery: `
+      (function_definition name: (identifier) @func.name)
+      (class_definition name: (identifier) @class.name)
+      (object_definition name: (identifier) @module.name)
+      (trait_definition name: (identifier) @interface.name)
+    `,
+    importQuery: `
+      (import_declaration path: (stable_identifier) @source)
+    `,
+  },
+
+  // ── Lua ─────────────────────────────────────────────────────────────────────
+  '.lua': {
+    wasmFile: 'tree-sitter-lua.wasm',
+    symbolQuery: `
+      (function_declaration name: (identifier) @func.name)
+    `,
+    importQuery: `
+      (function_call name: (identifier) @_fn arguments: (arguments (string) @source) (#eq? @_fn "require"))
+    `,
+  },
+
+  // ── Dart ────────────────────────────────────────────────────────────────────
+  '.dart': {
+    wasmFile: 'tree-sitter-dart.wasm',
+    symbolQuery: `
+      (function_signature name: (identifier) @func.name)
+      (class_definition name: (identifier) @class.name)
+    `,
+    importQuery: `
+      (import_or_export (configurable_uri (uri (string_literal) @source)))
+    `,
+  },
+
+  // ── Elixir ──────────────────────────────────────────────────────────────────
+  '.ex': {
+    wasmFile: 'tree-sitter-elixir.wasm',
+    symbolQuery: `
+      (call target: (identifier) @_kw (arguments (alias) @module.name) (#match? @_kw "^(defmodule)$"))
+      (call target: (identifier) @_kw (arguments (identifier) @func.name) (#match? @_kw "^(def|defp)$"))
+    `,
+    importQuery: `
+      (call target: (identifier) @_kw (arguments (alias) @source) (#match? @_kw "^(import|alias|use)$"))
+    `,
+  },
+
+  // ── Zig ─────────────────────────────────────────────────────────────────────
+  '.zig': {
+    wasmFile: 'tree-sitter-zig.wasm',
+    symbolQuery: `
+      (TopLevelDecl (FnProto (IDENTIFIER) @func.name))
+    `,
+    importQuery: `
+      (BuildinExpr (BUILTINIDENTIFIER) @_fn (Expr (STRINGLITERALSINGLE) @source) (#eq? @_fn "@import"))
+    `,
+  },
+
+  // ── Bash ────────────────────────────────────────────────────────────────────
+  '.sh': {
+    wasmFile: 'tree-sitter-bash.wasm',
+    symbolQuery: `
+      (function_definition name: (word) @func.name)
+    `,
+    importQuery: `
+      (command name: (command_name) @_cmd argument: (word) @source (#match? @_cmd "^(source|\\\\.)$"))
+    `,
+  },
+
+  // ── HTML ────────────────────────────────────────────────────────────────────
+  '.html': {
+    wasmFile: 'tree-sitter-html.wasm',
+    symbolQuery: ``,
+    importQuery: ``,
+  },
+};
+
+// ─── Parser Implementation ───────────────────────────────────────────────────
+
+export class CodeParser {
+  private static initPromise: Promise<void> | null = null;
+  private languages: Map<string, Language> = new Map();
+  private parser: Parser | null = null;
+
+  constructor() {}
+
+  /**
+   * Initialize the WASM runtime. Called once, cached globally.
+   */
+  private async ensureInit(): Promise<void> {
+    if (this.parser) return;
+
+    if (!CodeParser.initPromise) {
+      CodeParser.initPromise = Parser.init();
+    }
+    await CodeParser.initPromise;
+    this.parser = new Parser();
   }
 
-  private async initParsers(ext: string) {
-    if (this.parsers.has(ext)) return;
+  /**
+   * Load a language grammar from its WASM file.
+   * Uses tree-sitter-wasms package for pre-built WASM binaries.
+   */
+  private async loadLanguage(ext: string): Promise<Language | null> {
+    if (this.languages.has(ext)) return this.languages.get(ext)!;
 
-    if (['.ts', '.tsx', '.js', '.jsx'].includes(ext)) {
-      try {
-        const mod = require('tree-sitter-typescript');
-        const tsParser = new Parser();
-        const langObj = mod.typescript || mod;
-        // @ts-ignore
-        tsParser.setLanguage(langObj);
-        this.parsers.set('.ts', tsParser);
-        this.parsers.set('.tsx', tsParser);
-        this.parsers.set('.js', tsParser);
-        this.parsers.set('.jsx', tsParser);
-        this.languages.set('typescript', langObj);
-      } catch (e: any) {
-        fs.appendFileSync(LOG_PATH, `[Parser] TS LOAD ERROR: ${e.message}\n`);
+    const config = LANGUAGE_CONFIG[ext];
+    if (!config) return null;
+
+    try {
+      // Resolve the WASM file path from the tree-sitter-wasms package
+      const wasmsDir = path.dirname(require.resolve('tree-sitter-wasms/package.json'));
+      const wasmPath = path.join(wasmsDir, 'out', config.wasmFile);
+
+      if (!fs.existsSync(wasmPath)) {
+        debugLog(`[Parser] WASM file not found: ${wasmPath}`);
+        return null;
       }
-      return;
-    }
 
-    const langMap: Record<string, { module: string, name: string }> = {
-      '.py': { module: 'tree-sitter-python', name: 'python' },
-      '.rs': { module: 'tree-sitter-rust', name: 'rust' },
-      '.go': { module: 'tree-sitter-go', name: 'go' },
-      '.java': { module: 'tree-sitter-java', name: 'java' },
-      '.c': { module: 'tree-sitter-c', name: 'c' },
-      '.cpp': { module: 'tree-sitter-cpp', name: 'cpp' },
-      '.rb': { module: 'tree-sitter-ruby', name: 'ruby' },
-      '.cs': { module: 'tree-sitter-c-sharp', name: 'c-sharp' },
-      '.php': { module: 'tree-sitter-php', name: 'php' },
-      '.swift': { module: 'tree-sitter-swift', name: 'swift' },
-      '.lua': { module: 'tree-sitter-lua', name: 'lua' },
-      '.vue': { module: 'tree-sitter-vue', name: 'vue' },
-      '.svelte': { module: 'tree-sitter-svelte', name: 'svelte' },
-      '.dart': { module: 'tree-sitter-dart', name: 'dart' },
-      '.kt': { module: 'tree-sitter-kotlin', name: 'kotlin' },
-      '.scala': { module: 'tree-sitter-scala', name: 'scala' },
-      '.zig': { module: 'tree-sitter-zig', name: 'zig' },
-      '.ex': { module: 'tree-sitter-elixir', name: 'elixir' },
-      '.m': { module: 'tree-sitter-objc', name: 'objc' },
-      '.jl': { module: 'tree-sitter-julia', name: 'julia' },
-      '.v': { module: 'tree-sitter-verilog', name: 'verilog' },
-      '.sh': { module: 'tree-sitter-bash', name: 'bash' },
-      '.html': { module: 'tree-sitter-html', name: 'html' }
-    };
-
-    const lang = langMap[ext];
-    if (lang) {
-      try {
-        const mod = require(lang.module);
-        const actualMod = mod.default || mod;
-        
-        const p = new Parser();
-        let success = false;
-
-        const snakeName = lang.name.replace(/-/g, '_');
-        const candidates = [
-          actualMod[snakeName],
-          actualMod[lang.name],
-          actualMod.language,
-          actualMod,
-          mod
-        ];
-
-        for (const candidate of candidates) {
-          if (!candidate) continue;
-          try {
-            fs.appendFileSync(LOG_PATH, `[Parser] Trying candidate for ${lang.name}: type=${typeof candidate}, proto=${Object.getPrototypeOf(candidate)?.constructor?.name}\n`);
-            // @ts-ignore
-            p.setLanguage(candidate);
-            this.parsers.set(ext, p);
-            this.languages.set(lang.name, candidate);
-            success = true;
-            fs.appendFileSync(LOG_PATH, `[Parser] ${lang.name} loaded successfully.\n`);
-            break;
-          } catch (e: any) {
-             fs.appendFileSync(LOG_PATH, `[Parser] Candidate FAILED for ${lang.name}: ${e.message}\n`);
-          }
-        }
-
-        if (!success) {
-          fs.appendFileSync(LOG_PATH, `[Parser] FAILED to find valid langObj for ${lang.name}\n`);
-        }
-      } catch (e: any) { 
-        fs.appendFileSync(LOG_PATH, `[Parser] INIT ERROR for ${lang.module}: ${e.message}\n`);
-      }
+      const language = await Language.load(wasmPath);
+      this.languages.set(ext, language);
+      debugLog(`[Parser] ${config.wasmFile} loaded successfully via WASM.`);
+      return language;
+    } catch (e: any) {
+      debugLog(`[Parser] Failed to load WASM for ${ext}: ${e.message}`);
+      return null;
     }
   }
 
   async parseSymbols(filePath: string): Promise<SymbolInfo[]> {
     const ext = path.extname(filePath);
-    await this.initParsers(ext);
-    const parser = this.parsers.get(ext);
-    if (!parser) return [];
+    const config = LANGUAGE_CONFIG[ext];
+    if (!config || !config.symbolQuery) return [];
+
+    await this.ensureInit();
+    const language = await this.loadLanguage(ext);
+    if (!language || !this.parser) return [];
 
     const content = await fs.readFile(filePath, 'utf8');
-    const tree = parser.parse(content);
+    this.parser.setLanguage(language);
+    const tree = this.parser.parse(content);
+    if (!tree) return [];
+    
     const symbols: SymbolInfo[] = [];
 
-    let queryString = '';
-    let language: any;
-
-    if (['.ts', '.tsx', '.js', '.jsx'].includes(ext)) {
-      language = this.languages.get('typescript');
-      queryString = `
-        (function_declaration name: (identifier) @func.name)
-        (class_declaration name: (type_identifier) @class.name)
-        (interface_declaration name: (type_identifier) @interface.name)
-        (method_definition name: (property_identifier) @method.name)
-        (variable_declarator name: (identifier) @var.name)
-      `;
-    } else if (ext === '.py') {
-      language = this.languages.get('python');
-      queryString = `
-        (function_definition name: (identifier) @func.name)
-        (class_definition name: (identifier) @class.name)
-      `;
-    } else if (ext === '.rs') {
-      language = this.languages.get('rust');
-      queryString = `
-        (function_item name: (identifier) @func.name)
-        (struct_item name: (type_identifier) @struct.name)
-      `;
-    } else if (ext === '.go') {
-      language = this.languages.get('go');
-      queryString = `
-        (function_declaration name: (identifier) @func.name)
-        (type_declaration (type_spec name: (type_identifier) @type.name))
-      `;
-    } else if (ext === '.java') {
-      language = this.languages.get('java');
-      queryString = `
-        (method_declaration name: (identifier) @method.name)
-        (class_declaration name: (identifier) @class.name)
-      `;
-    } else if (ext === '.rb') {
-      language = this.languages.get('ruby');
-      queryString = `
-        (method name: (identifier) @method.name)
-        (class name: (constant) @class.name)
-      `;
-    } else if (ext === '.php') {
-      const phpMod = this.languages.get('php');
-      language = phpMod?.php || phpMod;
-      queryString = `
-        (function_definition name: (name) @func.name)
-        (class_declaration name: (name) @class.name)
-      `;
-    }
-
-    if (!queryString || !language) return [];
-
     try {
-      const query = new Parser.Query(language, queryString);
+      const query = new Query(language, config.symbolQuery);
       const captures = query.captures(tree.rootNode);
 
       for (const capture of captures) {
+        // Skip predicate-internal captures (e.g. @_kw, @_fn, @_cmd, @_method)
+        if (capture.name.startsWith('_')) continue;
+
         symbols.push({
           name: capture.node.text,
           type: this.mapNodeType(capture.name),
@@ -185,108 +402,113 @@ export class CodeParser {
           endLine: capture.node.endPosition.row + 1,
         });
       }
-    } catch (error) { }
+      query.delete();
+    } catch (e: any) {
+      debugLog(`[Parser] Symbol query failed for ${filePath}: ${e.message}`);
+    }
 
+    if (tree) tree.delete();
     return symbols;
   }
 
   async parseImports(filePath: string): Promise<string[]> {
     const ext = path.extname(filePath);
-    await this.initParsers(ext);
-    const parser = this.parsers.get(ext);
-    if (!parser) return [];
+    const config = LANGUAGE_CONFIG[ext];
+    if (!config || !config.importQuery) return [];
+
+    await this.ensureInit();
+    const language = await this.loadLanguage(ext);
+    if (!language || !this.parser) return [];
 
     const content = await fs.readFile(filePath, 'utf8');
-    const tree = parser.parse(content);
+    this.parser.setLanguage(language);
+    const tree = this.parser.parse(content);
+    if (!tree) return [];
+
     const imports: string[] = [];
 
-    let queryString = '';
-    let language: any;
+    try {
+      const query = new Query(language, config.importQuery);
+      const captures = query.captures(tree.rootNode);
 
-    if (['.ts', '.tsx', '.js', '.jsx'].includes(ext)) {
-      language = this.languages.get('typescript');
-      queryString = `
-        (import_statement source: (string) @source)
-        (export_statement source: (string) @source)
-      `;
-    } else if (ext === '.py') {
-      language = this.languages.get('python');
-      queryString = `
-        (import_statement name: (dotted_name) @source)
-        (import_from_statement module: (dotted_name) @source)
-      `;
-    } else if (ext === '.go') {
-      language = this.languages.get('go');
-      queryString = `
-        (import_spec path: (string_literal) @source)
-      `;
-    } else if (ext === '.rs') {
-      // Rust use declarations are complex (scoped_use_list, wildcards, etc.)
-      // Handled entirely by regex fallback below for reliability
-      language = null;
-      queryString = '';
-    }
+      for (const capture of captures) {
+        // Skip predicate-internal captures (e.g. @_fn, @_kw, @_cmd, @_method)
+        if (capture.name.startsWith('_')) continue;
 
-    if (queryString && language) {
-      try {
-        const query = new Parser.Query(language, queryString);
-        const captures = query.captures(tree.rootNode);
+        let source = capture.node.text;
 
-        for (const capture of captures) {
-          let source = capture.node.text.replace(/['"]/g, '');
-          
-          if (ext === '.py') {
-            source = source.replace(/\./g, '/');
-          }
-          
-          if (source && !imports.includes(source)) {
-            imports.push(source);
-          }
+        // ── Post-processing per language ──────────────────────────────────
+        source = this.normalizeImport(ext, source);
+
+        if (source && !imports.includes(source)) {
+          imports.push(source);
         }
-      } catch (e: any) {
-        // Tree-sitter failed
       }
+      query.delete();
+    } catch (e: any) {
+      debugLog(`[Parser] Import query failed for ${filePath}: ${e.message}`);
     }
 
-    // --- Regex Fallback for robustness ---
-    // For Rust: always use regex (tree-sitter skipped above)
-    // For Python/Go: fallback when tree-sitter fails
-    if (imports.length === 0 || ext === '.rs') {
-      try {
-        const fallbackContent = await fs.readFile(filePath, 'utf8');
-        if (ext === '.py') {
-          const matches = fallbackContent.matchAll(/(?:from|import)\s+([\w\.]+)/g);
-          for (const match of matches) {
-            const source = match[1].replace(/\./g, '/');
-            if (source && source !== 'import' && source !== 'from') {
-              if (!imports.includes(source)) imports.push(source);
-            }
-          }
-        } else if (ext === '.go') {
-          // Single imports: import "fmt"
-          const singleMatches = fallbackContent.matchAll(/import\s+"([^"]+)"/g);
-          for (const match of singleMatches) {
-            if (!imports.includes(match[1])) imports.push(match[1]);
-          }
-          // Multi-line import blocks: import ( "fmt" \n "os" )
-          const blockMatches = fallbackContent.matchAll(/import\s*\(([\s\S]*?)\)/g);
-          for (const match of blockMatches) {
-            const lineMatches = match[1].matchAll(/"([^"]+)"/g);
-            for (const lineMatch of lineMatches) {
-              if (!imports.includes(lineMatch[1])) imports.push(lineMatch[1]);
-            }
-          }
-        } else if (ext === '.rs') {
-          // Capture full local use paths: crate::X::Y, self::X, super::X
-          const localMatches = fallbackContent.matchAll(/use\s+((?:crate|self|super)(?:::\w+)+)/g);
-          for (const match of localMatches) {
-            if (!imports.includes(match[1])) imports.push(match[1]);
-          }
-        }
-      } catch (e) {}
-    }
-
+    if (tree) tree.delete();
     return imports;
+  }
+
+  /**
+   * Normalize a raw import string based on the language's conventions.
+   */
+  private normalizeImport(ext: string, raw: string): string {
+    // Strip surrounding quotes for all languages
+    let source = raw.replace(/^['"`]|['"`]$/g, '');
+
+    switch (ext) {
+      case '.py': {
+        // Python: convert dots to slashes for path resolution
+        // Handle relative imports: '.' -> '.', '.foo' -> './foo', '..foo' -> '../foo'
+        if (source.startsWith('.')) {
+          // Count leading dots
+          const dotMatch = source.match(/^(\.+)(.*)/);
+          if (dotMatch) {
+            const dots = dotMatch[1];
+            const rest = dotMatch[2].replace(/\./g, '/');
+            if (dots.length === 1) {
+              source = rest ? './' + rest : '.';
+            } else {
+              source = '../'.repeat(dots.length - 1) + rest;
+            }
+          }
+        } else {
+          source = source.replace(/\./g, '/');
+        }
+        break;
+      }
+      case '.go':
+        // Go: strip surrounding quotes (already done above)
+        break;
+      case '.rs':
+        // Rust: keep the :: notation as-is, indexer handles resolution
+        break;
+      case '.java':
+      case '.kt':
+      case '.scala':
+        // JVM: keep dotted notation, indexer handles resolution
+        break;
+      case '.cs':
+        // C#: keep dotted namespace
+        break;
+      case '.c':
+      case '.cpp':
+        // C/C++: strip < > for system includes
+        source = source.replace(/^<|>$/g, '');
+        break;
+      case '.php':
+        // PHP: backslashes to forward slashes for path-like resolution
+        source = source.replace(/\\/g, '/');
+        break;
+      default:
+        break;
+    }
+
+    return source;
   }
 
   private mapNodeType(captureName: string): SymbolInfo['type'] {
@@ -295,6 +517,7 @@ export class CodeParser {
     if (captureName.includes('interface')) return 'interface';
     if (captureName.includes('method')) return 'method';
     if (captureName.includes('struct')) return 'struct';
+    if (captureName.includes('module')) return 'module';
     if (captureName.includes('type')) return 'class';
     return 'variable';
   }

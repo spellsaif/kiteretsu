@@ -31,33 +31,7 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "better-sqlite3",
-      "tree-sitter",
-      "tree-sitter-bash",
-      "tree-sitter-c",
-      "tree-sitter-c-sharp",
-      "tree-sitter-cpp",
-      "tree-sitter-dart",
-      "tree-sitter-elixir",
-      "tree-sitter-go",
-      "tree-sitter-html",
-      "tree-sitter-java",
-      "tree-sitter-javascript",
-      "tree-sitter-julia",
-      "tree-sitter-kotlin",
-      "tree-sitter-lua",
-      "tree-sitter-objc",
-      "tree-sitter-php",
-      "tree-sitter-python",
-      "tree-sitter-ruby",
-      "tree-sitter-rust",
-      "tree-sitter-scala",
-      "tree-sitter-svelte",
-      "tree-sitter-swift",
-      "tree-sitter-typescript",
-      "tree-sitter-verilog",
-      "tree-sitter-vue",
-      "tree-sitter-zig"
+      "better-sqlite3"
     ]
   }
 }

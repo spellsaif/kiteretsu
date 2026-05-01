@@ -138,12 +138,17 @@ export class Kiteretsu {
     for (const sourceRaw of importSources) {
       let targetPath: string | null = null;
 
+      // ─── NEW RESOLUTION STRATEGY ───
+      let potentialTargets: string[] = [];
+
       if (['.ts', '.tsx', '.js', '.jsx'].includes(fileExt)) {
         // ── JS/TS Resolution ──
         const source = sourceRaw.replace(/\.(js|jsx|ts|tsx)$/, '');
         if (source.startsWith('.')) {
-          targetPath = this.resolveFilePath(path.resolve(path.dirname(fullPath), source));
+          const resolved = this.resolveImportToPath(path.dirname(fullPath), source);
+          if (resolved) potentialTargets.push(resolved);
         } else {
+          // Check package map
           let packageName = '';
           let subPath = '';
           if (source.startsWith('@')) {
@@ -157,55 +162,66 @@ export class Kiteretsu {
           }
           const packageDir = this.packageMap.get(packageName);
           if (packageDir) {
-            const srcDir = path.join(packageDir, 'src');
-            if (subPath) {
-              targetPath = this.resolveFilePath(path.join(srcDir, subPath)) || 
-                           this.resolveFilePath(path.join(packageDir, subPath));
-            } else {
-              targetPath = this.resolveFilePath(srcDir) || this.resolveFilePath(packageDir);
-            }
+            const resolved = this.resolveImportToPath(packageDir, subPath || 'src');
+            if (resolved) potentialTargets.push(resolved);
           }
-          if (!targetPath) {
-            targetPath = this.resolveFilePath(path.resolve(this.rootDir, source));
+          // Fallback to root-relative
+          if (potentialTargets.length === 0) {
+            const resolved = this.resolveImportToPath(this.rootDir, source);
+            if (resolved) potentialTargets.push(resolved);
           }
         }
       } else if (fileExt === '.py') {
         // ── Python Resolution ──
-        // sourceRaw is like 'models/user' (dots already converted to slashes)
-        targetPath = this.resolveFilePath(path.resolve(this.rootDir, sourceRaw));
-        if (!targetPath) {
-          targetPath = this.resolveFilePath(path.resolve(path.dirname(fullPath), sourceRaw));
-        }
+        const resolved = this.resolveImportToPath(path.dirname(fullPath), sourceRaw) || 
+                         this.resolveImportToPath(this.rootDir, sourceRaw);
+        if (resolved) potentialTargets.push(resolved);
       } else if (fileExt === '.rs') {
         // ── Rust Resolution ──
-        // sourceRaw is like 'crate::models::user', 'self::helpers', 'super::config'
         const rustPath = sourceRaw.replace(/::/g, '/');
+        let searchBase = this.rootDir;
+        let relativePath = rustPath;
+        
         if (sourceRaw.startsWith('crate')) {
-          targetPath = this.resolveFilePath(path.resolve(this.rootDir, rustPath.replace(/^crate/, 'src')));
+          searchBase = this.rootDir;
+          relativePath = rustPath.replace(/^crate/, 'src');
         } else if (sourceRaw.startsWith('super')) {
-          targetPath = this.resolveFilePath(path.resolve(path.dirname(fullPath), rustPath.replace(/^super/, '..')));
+          searchBase = path.dirname(fullPath);
+          relativePath = rustPath.replace(/^super/, '..');
         } else if (sourceRaw.startsWith('self')) {
-          targetPath = this.resolveFilePath(path.resolve(path.dirname(fullPath), rustPath.replace(/^self/, '.')));
+          searchBase = path.dirname(fullPath);
+          relativePath = rustPath.replace(/^self/, '.');
         }
+
+        const resolved = this.resolveImportToPath(searchBase, relativePath);
+        if (resolved) potentialTargets.push(resolved);
       } else if (fileExt === '.go') {
         // ── Go Resolution ──
-        // sourceRaw is like 'github.com/user/project/internal/api' or 'fmt'
-        if (sourceRaw.includes('/')) {
-          const goMod = this.getGoModuleName();
-          if (goMod && sourceRaw.startsWith(goMod)) {
-            const localPath = sourceRaw.slice(goMod.length + 1);
-            targetPath = this.resolveFilePath(path.resolve(this.rootDir, localPath));
+        let localPath = sourceRaw;
+        const goMod = this.getGoModuleName();
+        if (goMod && sourceRaw.startsWith(goMod)) {
+          localPath = sourceRaw.slice(goMod.length + 1);
+        }
+        
+        const resolvedDir = this.resolveImportToPath(this.rootDir, localPath);
+        if (resolvedDir && fs.statSync(resolvedDir).isDirectory()) {
+          // Link to ALL files in the Go package directory
+          const files = fs.readdirSync(resolvedDir);
+          for (const f of files) {
+            if (f.endsWith('.go')) potentialTargets.push(path.join(resolvedDir, f));
           }
+        } else if (resolvedDir) {
+          potentialTargets.push(resolvedDir);
         }
       } else {
-        // ── Generic: try root-relative and file-relative ──
-        targetPath = this.resolveFilePath(path.resolve(this.rootDir, sourceRaw));
-        if (!targetPath) {
-          targetPath = this.resolveFilePath(path.resolve(path.dirname(fullPath), sourceRaw));
-        }
+        // ── Generic ──
+        const resolved = this.resolveImportToPath(path.dirname(fullPath), sourceRaw) || 
+                         this.resolveImportToPath(this.rootDir, sourceRaw);
+        if (resolved) potentialTargets.push(resolved);
       }
 
-      if (targetPath) {
+      // ─── REGISTER EDGES ───
+      for (let targetPath of potentialTargets) {
         targetPath = path.resolve(targetPath).replace(/\\/g, '/');
         if (process.platform === 'win32' && /^[a-z]:/i.test(targetPath)) {
           targetPath = targetPath[0].toLowerCase() + targetPath.slice(1);
@@ -218,18 +234,28 @@ export class Kiteretsu {
           .whereRaw('LOWER(path) = ?', [targetRelative.toLowerCase()])
           .first();
         
-        if (target) {
-          await knex('graph_edges').insert({
-            source_type: 'file',
+        if (target && target.id !== fileId) { // Avoid self-loops
+          // Avoid duplicates
+          const existing = await knex('graph_edges').where({
             source_id: fileId,
-            relation: 'imports',
-            target_type: 'file',
             target_id: target.id,
-            confidence: 0.8,
-            provenance: 'static_analysis'
-          });
+            relation: 'imports'
+          }).first();
+          
+          if (!existing) {
+            await knex('graph_edges').insert({
+              source_type: 'file',
+              source_id: fileId,
+              relation: 'imports',
+              target_type: 'file',
+              target_id: target.id,
+              confidence: 0.8,
+              provenance: 'static_analysis'
+            });
+          }
         }
       }
+
     }
   }
 
@@ -363,12 +389,46 @@ export class Kiteretsu {
     }
   }
 
+  /** 
+   * A more robust resolution strategy that tries to find a file by stripping path segments.
+   * Useful for Rust (crate::a::b -> src/a.rs) and Go (pkg/a/b -> pkg directory).
+   */
+  private resolveImportToPath(baseDir: string, relativePath: string): string | null {
+    if (!relativePath) return null;
+    
+    let currentPath = path.resolve(baseDir, relativePath);
+    
+    // Try full path first (with extensions)
+    const exact = this.resolveFilePath(currentPath);
+    if (exact) return exact;
+
+    // If it's a directory, return it
+    if (fs.existsSync(currentPath) && fs.statSync(currentPath).isDirectory()) {
+      return currentPath;
+    }
+
+    // Strip segments from the right (e.g. models/user/get -> models/user.rs)
+    let parts = relativePath.split(/[/\\]/);
+    while (parts.length > 1) {
+      parts.pop();
+      const candidateBase = path.resolve(baseDir, parts.join('/'));
+      const found = this.resolveFilePath(candidateBase);
+      if (found) return found;
+      
+      if (fs.existsSync(candidateBase) && fs.statSync(candidateBase).isDirectory()) {
+        return candidateBase;
+      }
+    }
+
+    return null;
+  }
+
   /** Resolve a base path (without extension) to an actual file on disk. */
   private resolveFilePath(targetBase: string): string | null {
     const exts = [
       '', '.ts', '.tsx', '.js', '.jsx', 
       '.py', '.go', '.rs', '.java', '.rb', 
-      '.c', '.cpp', '.cs', '.php', '.swift'
+      '.c', '.cpp', '.cs', '.php', '.swift', '.kt', '.scala'
     ];
     for (const ext of exts) {
       const candidate = targetBase + ext;
@@ -380,6 +440,7 @@ export class Kiteretsu {
         path.join(targetBase, 'index' + ext),      // JS/TS
         path.join(targetBase, '__init__' + ext),    // Python
         path.join(targetBase, 'mod' + ext),         // Rust
+        path.join(targetBase, 'main' + ext),        // Go/C
       ];
       for (const dc of dirCandidates) {
         if (fs.existsSync(dc) && fs.statSync(dc).isFile()) {
