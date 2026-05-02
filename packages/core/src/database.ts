@@ -32,8 +32,7 @@ export class Database {
   }
 
   async initialize() {
-    // Enable WAL mode for better concurrent read performance
-    await this.db.raw('PRAGMA journal_mode = WAL');
+    // WAL mode disabled for crash stability (writes directly to db.sqlite)
 
     if (!(await this.db.schema.hasTable('files'))) {
       await this.db.schema.createTable('files', (table) => {

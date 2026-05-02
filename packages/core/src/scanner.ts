@@ -1,7 +1,7 @@
 import { globby } from 'globby';
 import path from 'path';
 import fs from 'fs-extra';
-import crypto from 'crypto';
+import xxhash from 'xxhash-wasm';
 
 export interface ScanOptions {
   include?: string[];
@@ -10,7 +10,16 @@ export interface ScanOptions {
 }
 
 export class Scanner {
+  private _hasher: any;
+
   constructor(private options: ScanOptions) {}
+
+  private async getHasher() {
+    if (!this._hasher) {
+      this._hasher = await xxhash();
+    }
+    return this._hasher;
+  }
 
   async scan(pattern?: string | string[]) {
     const include = pattern || this.options.include || ['**/*'];
@@ -56,7 +65,8 @@ export class Scanner {
   }
 
   async getFileHash(filePath: string): Promise<string> {
+    const hasher = await this.getHasher();
     const content = await fs.readFile(filePath);
-    return crypto.createHash('sha256').update(content).digest('hex');
+    return hasher.h64Raw(content).toString(16);
   }
 }

@@ -16,6 +16,7 @@ export interface SymbolInfo {
   type: 'function' | 'class' | 'interface' | 'method' | 'variable' | 'struct' | 'module';
   startLine: number;
   endLine: number;
+  docstring?: string;
 }
 
 export interface ImportInfo {
@@ -487,11 +488,36 @@ export class CodeParser {
             if (capture.name.startsWith('_')) continue;
             const name = capture.node.text;
             if (!symbols.some(s => s.name === name)) {
+              // Extract docstring/comment
+              let docstring: string | undefined;
+              let prev = capture.node.previousSibling;
+              
+              // Walk up siblings to find comments (handle modifiers like 'export' or 'async' in some languages)
+              let depth = 0;
+              while (prev && depth < 5) {
+                if (prev.type === 'comment' || prev.type === 'line_comment' || prev.type === 'block_comment') {
+                  docstring = prev.text;
+                  break;
+                }
+                // Also check if the parent is a declaration that has the comment
+                prev = prev.previousSibling;
+                depth++;
+              }
+
+              // Fallback: Check parent's previous sibling (common for exported functions in TS/JS)
+              if (!docstring && capture.node.parent) {
+                let parentPrev = capture.node.parent.previousSibling;
+                if (parentPrev && (parentPrev.type === 'comment' || parentPrev.type === 'line_comment' || parentPrev.type === 'block_comment')) {
+                  docstring = parentPrev.text;
+                }
+              }
+
               symbols.push({
                 name,
                 type: this.mapNodeType(capture.name),
                 startLine: capture.node.startPosition.row + 1,
                 endLine: capture.node.endPosition.row + 1,
+                docstring: docstring ? docstring.replace(/^(\/\*\*?|\/\/|\*)\s*/, '').replace(/\*\/$/, '').trim() : undefined
               });
             }
           }

@@ -142,6 +142,12 @@ export class Kiteretsu {
     const parser = await this.getParser();
     const { symbols, imports: importInfos } = await parser.parseCode(fullPath);
 
+    // 2.5 Generate and store Technical Gist
+    const gist = this.generateTechnicalGist(path.basename(fullPath), symbols, importInfos);
+    await knex('files').where({ id: fileId }).update({
+      summary: gist
+    });
+
     // Symbols
     await knex('symbols').where({ file_id: fileId }).delete();
     
@@ -384,10 +390,10 @@ export class Kiteretsu {
     }
 
     // ─── Pass 1: Register all files & check for changes (Parallel) ───
-    const existingFiles = await knex('files').select('id', 'path', 'hash', 'stale', 'embedding');
+    const existingFiles = await knex('files').select('id', 'path', 'hash', 'stale', 'embedding', 'summary');
     const existingFilesMap = new Map(existingFiles.map(f => [f.path, f]));
     
-    const limit = pLimit(3);
+    const limit = pLimit(1);
     const filesToProcess: string[] = [];
     const fileMap = new Map<string, number>();
     let registeredCount = 0;
@@ -409,7 +415,7 @@ export class Kiteretsu {
         filesToProcess.push(relativePath);
       } else {
         fileId = existingFile.id;
-        if (existingFile.hash !== hash || existingFile.stale || !existingFile.embedding) {
+        if (existingFile.hash !== hash || existingFile.stale || !existingFile.embedding || !existingFile.summary) {
           await knex('files').where({ id: fileId }).update({
             hash: hash,
             stale: true,
@@ -423,30 +429,29 @@ export class Kiteretsu {
       if (onProgress) onProgress(Math.floor((registeredCount / totalFiles) * 30), 100, `Registering files... (${registeredCount}/${totalFiles})`);
     })));
 
-    // ─── Pass 2: Parse symbols & build dependency graph (Parallel) ───
-    let indexedCount = 0;
-    const toProcessTotal = filesToProcess.length;
-
-    if (toProcessTotal > 0) {
-      await Promise.all(filesToProcess.map(relativePath => limit(async () => {
+    // ─── Pass 2: Parse symbols & build dependency graph ───
+    let processedCount = 0;
+    for (const relativePath of filesToProcess) {
+      try {
         const fullPath = path.resolve(this.rootDir, relativePath);
-        try {
-          await this.indexFile(fullPath);
-          // Mark as not stale after successful indexing
-          await knex('files').where({ path: relativePath }).update({ stale: false });
-        } catch (error: any) {
-          const debugLog = path.resolve(this.rootDir, '.kiteretsu', 'debug.log');
-          try { fs.appendFileSync(debugLog, `[Indexer] Error indexing ${relativePath}: ${error.message}\n`); } catch { }
-        }
-        indexedCount++;
+        await this.indexFile(fullPath);
+        // Mark as not stale after successful indexing
+        await knex('files').where({ path: relativePath }).update({ stale: false });
+        processedCount++;
         if (onProgress) {
-          const percent = 30 + Math.floor((indexedCount / toProcessTotal) * 70);
-          onProgress(percent, 100, `Indexing content... (${indexedCount}/${toProcessTotal})`);
+          onProgress(30 + Math.floor((processedCount / filesToProcess.length) * 70), 100, `Indexing: ${relativePath}`);
         }
-      })));
-    } else {
-      if (onProgress) onProgress(100, 100, 'Indexing complete (up to date)');
+        // Force GC if available to prevent OOM in bulk indexing
+        if (processedCount % 10 === 0 && (global as any).gc) {
+          (global as any).gc();
+        }
+      } catch (error: any) {
+        const debugLog = path.resolve(this.rootDir, '.kiteretsu', 'debug.log');
+        try { fs.appendFileSync(debugLog, `[Indexer] Error indexing ${relativePath}: ${error.message}\n`); } catch { }
+      }
     }
+
+    if (onProgress) onProgress(100, 100, 'Indexing complete');
 
     // Refresh counts
     const symbolCount = await knex('symbols').count('id as count').first();
@@ -860,6 +865,39 @@ export class Kiteretsu {
     }
 
     return Array.from(allTests);
+  }
+
+  private generateTechnicalGist(filename: string, symbols: any[], imports: any[]): string {
+    const lines: string[] = [];
+    
+    // 1. Identify primary purpose
+    const mainClasses = symbols.filter(s => s.type === 'class' || s.type === 'interface' || s.type === 'struct');
+    const mainFunctions = symbols.filter(s => s.type === 'function' || s.type === 'method').slice(0, 5);
+
+    if (mainClasses.length > 0) {
+      lines.push(`Core structures: ${mainClasses.map(c => c.name).join(', ')}.`);
+    }
+
+    if (mainFunctions.length > 0) {
+      const fnNames = mainFunctions.map(f => {
+        const doc = f.docstring ? ` (${f.docstring.split('\n')[0].slice(0, 50)})` : '';
+        return `${f.name}${doc}`;
+      });
+      lines.push(`Key logic: ${fnNames.join(', ')}.`);
+    }
+
+    // 2. Identify external dependencies (DNA)
+    const externalDeps = imports
+      .filter(i => !i.source.startsWith('.'))
+      .map(i => i.source.split('/').pop())
+      .slice(0, 5);
+    
+    if (externalDeps.length > 0) {
+      lines.push(`Integrates with: ${externalDeps.join(', ')}.`);
+    }
+
+    const summary = lines.join(' ');
+    return summary.length > 500 ? summary.slice(0, 497) + '...' : summary;
   }
 
   async destroy() {
