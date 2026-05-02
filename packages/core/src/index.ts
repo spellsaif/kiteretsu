@@ -781,7 +781,7 @@ export class Kiteretsu {
     const maxScore = allCandidates[0][1].score;
     const topCandidates = allCandidates
       .filter(([id, data]) => data.score >= maxScore * 0.4)
-      .slice(0, 5) // Limit noise to top 5 most relevant
+      .slice(0, 10) // Increased capacity for complex tasks
       .map(([id, data]) => ({ id, ...data }));
 
     // 2. Build Intelligence Accretion (Blast Radius + Rules + Tests)
