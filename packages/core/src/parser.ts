@@ -361,6 +361,8 @@ const LANGUAGE_CONFIG: Record<string, LanguageConfig> = {
 export class CodeParser {
   private static initPromise: Promise<void> | null = null;
   private languages: Map<string, Language> = new Map();
+  private queryCache: Map<string, { symbol?: Query, import?: Query }> = new Map();
+  private parserInstance: Parser | null = null;
 
   constructor() {}
 
@@ -419,6 +421,11 @@ export class CodeParser {
   }
 
   destroy(): void {
+    for (const queries of this.queryCache.values()) {
+      queries.symbol?.delete();
+      queries.import?.delete();
+    }
+    this.queryCache.clear();
     for (const language of this.languages.values()) {
       try {
         const disposableLanguage = language as Language & { delete?: () => void };
@@ -426,52 +433,113 @@ export class CodeParser {
       } catch {}
     }
     this.languages.clear();
+    if (this.parserInstance) {
+      this.parserInstance.delete();
+      this.parserInstance = null;
+    }
+  }
+
+  async parseCode(filePath: string): Promise<{ symbols: SymbolInfo[], imports: ImportInfo[] }> {
+    const ext = path.extname(filePath);
+    const config = LANGUAGE_CONFIG[ext];
+    if (!config) return { symbols: [], imports: [] };
+
+    const content = await fs.readFile(filePath, 'utf8');
+    
+    // 1. Regex Pass (Quick)
+    const symbols = this.parseSymbolsWithRegex(ext, content);
+    const imports = this.parseImportsWithRegex(ext, content) || [];
+
+    // 2. Tree-sitter Pass (Deep)
+    const treeSitterFallbackExts = new Set(['.py', '.go', '.rs', '.rb', '.c', '.cpp', '.h', '.hpp', '.java', '.cs', '.php', '.swift', '.kt', '.scala', '.lua', '.dart', '.ex', '.zig']);
+    if (symbols.length > 0 && imports.length > 0 && !treeSitterFallbackExts.has(ext)) {
+      return { symbols, imports };
+    }
+
+    const language = await this.loadLanguage(ext);
+    if (!language) return { symbols, imports };
+
+    if (!this.parserInstance) {
+      this.parserInstance = new Parser();
+    }
+    this.parserInstance.setLanguage(language);
+    
+    let tree: any = null;
+
+    try {
+      tree = this.parserInstance.parse(content);
+      if (!tree) return { symbols, imports };
+
+      // Get or create cached queries
+      let queries = this.queryCache.get(ext);
+      if (!queries) {
+        queries = {};
+        if (config.symbolQuery) queries.symbol = new Query(language, config.symbolQuery);
+        if (config.importQuery) queries.import = new Query(language, config.importQuery);
+        this.queryCache.set(ext, queries);
+      }
+
+      // Extract Symbols
+      if (queries.symbol) {
+        try {
+          const captures = queries.symbol.captures(tree.rootNode);
+          for (const capture of captures) {
+            if (capture.name.startsWith('_')) continue;
+            const name = capture.node.text;
+            if (!symbols.some(s => s.name === name)) {
+              symbols.push({
+                name,
+                type: this.mapNodeType(capture.name),
+                startLine: capture.node.startPosition.row + 1,
+                endLine: capture.node.endPosition.row + 1,
+              });
+            }
+          }
+        } catch (e: any) { debugLog(`[Parser] Symbol query failed: ${e.message}`); }
+      }
+
+      // Extract Imports
+      if (queries.import) {
+        try {
+          const captures = queries.import.captures(tree.rootNode);
+          for (const capture of captures) {
+            let source = capture.node.text;
+            let isTypeOnly = false;
+
+            // Resilient filtering
+            let parent = capture.node.parent;
+            let isImport = false;
+            let depth = 0;
+            while (parent && depth < 10) {
+              const type = parent.type.toLowerCase();
+              if (type.includes('import') || type.includes('export') || type.includes('use') || type.includes('require')) {
+                isImport = true;
+                if (parent.text.includes('type ')) isTypeOnly = true;
+                break;
+              }
+              parent = parent.parent;
+              depth++;
+            }
+
+            if (!isImport) continue;
+            source = this.normalizeImport(ext, source);
+            if (source && !imports.some(i => i.source === source)) {
+              imports.push({ source, type: isTypeOnly ? 'type' : 'value' });
+            }
+          }
+        } catch (e: any) { debugLog(`[Parser] Import query failed: ${e.message}`); }
+      }
+    } catch (e: any) {
+      debugLog(`[Parser] Deep parse failed for ${filePath}: ${e.message}`);
+    } finally {
+      if (tree) tree.delete();
+    }
+
+    return { symbols, imports };
   }
 
   async parseSymbols(filePath: string): Promise<SymbolInfo[]> {
-    const ext = path.extname(filePath);
-    const config = LANGUAGE_CONFIG[ext];
-    if (!config || !config.symbolQuery) return [];
-
-    const content = await fs.readFile(filePath, 'utf8');
-    const regexSymbols = this.parseSymbolsWithRegex(ext, content);
-    const treeSitterFallbackExts = new Set(['.py', '.go', '.rs', '.rb']);
-    if (regexSymbols.length > 0 || !treeSitterFallbackExts.has(ext)) return regexSymbols;
-
-    const language = await this.loadLanguage(ext);
-    if (!language) return [];
-
-    const parser = new Parser();
-    parser.setLanguage(language);
-    
-    let tree: any = null;
-    let query: Query | null = null;
-    const symbols: SymbolInfo[] = [];
-
-    try {
-      tree = parser.parse(content);
-      if (!tree) return [];
-
-      query = new Query(language, config.symbolQuery);
-      const captures = query.captures(tree.rootNode);
-
-      for (const capture of captures) {
-        if (capture.name.startsWith('_')) continue;
-
-        symbols.push({
-          name: capture.node.text,
-          type: this.mapNodeType(capture.name),
-          startLine: capture.node.startPosition.row + 1,
-          endLine: capture.node.endPosition.row + 1,
-        });
-      }
-    } catch (e: any) {
-      debugLog(`[Parser] Symbol query failed for ${filePath}: ${e.message}`);
-    } finally {
-      if (query) query.delete();
-      if (tree) tree.delete();
-      parser.delete();
-    }
+    const { symbols } = await this.parseCode(filePath);
     return symbols;
   }
 
@@ -513,69 +581,7 @@ export class CodeParser {
   }
 
   async parseImports(filePath: string): Promise<ImportInfo[]> {
-    const ext = path.extname(filePath);
-    const content = await fs.readFile(filePath, 'utf8');
-
-    const regexImports = this.parseImportsWithRegex(ext, content);
-    if (regexImports) return regexImports;
-
-    const config = LANGUAGE_CONFIG[ext];
-    if (!config || !config.importQuery) return [];
-
-    const language = await this.loadLanguage(ext);
-    if (!language) return [];
-
-    const parser = new Parser();
-    parser.setLanguage(language);
-
-    let tree: any = null;
-    let query: Query | null = null;
-    const imports: ImportInfo[] = [];
-
-    try {
-      tree = parser.parse(content);
-      if (!tree) return [];
-
-      query = new Query(language, config.importQuery);
-      const captures = query.captures(tree.rootNode);
-
-      for (const capture of captures) {
-        let source = capture.node.text;
-        let isTypeOnly = false;
-
-        // Resilient filtering: check if parent node looks like an import/export
-        let parent = capture.node.parent;
-        let isImport = false;
-        let depth = 0;
-        while (parent && depth < 10) {
-          const type = parent.type.toLowerCase();
-          if (type.includes('import') || type.includes('export') || type.includes('use') || type.includes('require')) {
-            isImport = true;
-            if (parent.text.includes('type ')) isTypeOnly = true;
-            break;
-          }
-          parent = parent.parent;
-          depth++;
-        }
-
-        if (!isImport) continue;
-
-        source = this.normalizeImport(ext, source);
-
-        if (source && !imports.some(i => i.source === source)) {
-          imports.push({
-            source,
-            type: isTypeOnly ? 'type' : 'value'
-          });
-        }
-      }
-    } catch (e: any) {
-      debugLog(`[Parser] Import query failed for ${filePath}: ${e.message}`);
-    } finally {
-      if (query) query.delete();
-      if (tree) tree.delete();
-      parser.delete();
-    }
+    const { imports } = await this.parseCode(filePath);
     return imports;
   }
 

@@ -20,6 +20,7 @@ export class Kiteretsu {
   private config: KiteretsuConfig;
   private packageMap: Map<string, string> = new Map();
   private crateMap: Map<string, string> = new Map();
+  private fileSystemCache: Set<string> = new Set();
 
   constructor(config: KiteretsuConfig) {
     // Normalize rootDir for consistent path comparisons (especially on Windows)
@@ -115,9 +116,9 @@ export class Kiteretsu {
 
     // 2. Parse symbols & imports
     const parser = await this.getParser();
+    const { symbols, imports: importInfos } = await parser.parseCode(fullPath);
 
     // Symbols
-    const symbols = await parser.parseSymbols(fullPath);
     await knex('symbols').where({ file_id: fileId }).delete();
     
     if (symbols.length > 0) {
@@ -128,7 +129,7 @@ export class Kiteretsu {
         start_line: sym.startLine,
         end_line: sym.endLine
       }));
-      // Batch insert in chunks to avoid SQLite limits if there are thousands of symbols
+      // Batch insert in chunks
       const chunkSize = 100;
       for (let i = 0; i < symbolRecords.length; i += chunkSize) {
         await knex('symbols').insert(symbolRecords.slice(i, i + chunkSize));
@@ -136,7 +137,6 @@ export class Kiteretsu {
     }
 
     // Imports
-    const importInfos = await parser.parseImports(fullPath);
     await knex('graph_edges')
       .where({ source_type: 'file', source_id: fileId })
       .whereIn('relation', ['imports', 'imports:type', 'imports:dynamic'])
@@ -328,7 +328,16 @@ export class Kiteretsu {
     const totalFiles = files.length;
     const knex = this.db.getKnex();
 
+    // Populate file system cache for fast resolution
+    this.fileSystemCache.clear();
+    for (const f of files) {
+      this.fileSystemCache.add(path.resolve(this.rootDir, f).replace(/\\/g, '/'));
+    }
+
     // ─── Pass 1: Register all files & check for changes (Parallel) ───
+    const existingFiles = await knex('files').select('id', 'path', 'hash', 'stale');
+    const existingFilesMap = new Map(existingFiles.map(f => [f.path, f]));
+    
     const limit = pLimit(20);
     const filesToProcess: string[] = [];
     const fileMap = new Map<string, number>();
@@ -338,7 +347,7 @@ export class Kiteretsu {
       const fullPath = path.resolve(this.rootDir, relativePath);
       const hash = await this.scanner.getFileHash(fullPath);
 
-      const existingFile = await knex('files').where({ path: relativePath }).first();
+      const existingFile = existingFilesMap.get(relativePath);
       let fileId: number;
 
       if (!existingFile) {
@@ -476,7 +485,7 @@ export class Kiteretsu {
       processedPath = relativePath.replace(/\./g, '/');
     }
 
-    let currentPath = path.resolve(baseDir, processedPath);
+    let currentPath = path.resolve(baseDir, processedPath).replace(/\\/g, '/');
 
     // Try full path first (with extensions)
     const exact = this.resolveFilePath(currentPath);
@@ -491,7 +500,7 @@ export class Kiteretsu {
     let parts = processedPath.split(/[/\\]/);
     while (parts.length > 1) {
       parts.pop();
-      const candidateBase = path.resolve(baseDir, parts.join('/'));
+      const candidateBase = path.resolve(baseDir, parts.join('/')).replace(/\\/g, '/');
       const found = this.resolveFilePath(candidateBase);
       if (found) return found;
 
@@ -502,7 +511,7 @@ export class Kiteretsu {
 
     // Last resort: search globally in rootDir if it's not a relative path
     if (!relativePath.startsWith('.')) {
-      const globalResolved = this.resolveFilePath(path.resolve(this.rootDir, processedPath));
+      const globalResolved = this.resolveFilePath(path.resolve(this.rootDir, processedPath).replace(/\\/g, '/'));
       if (globalResolved) return globalResolved;
     }
 
@@ -511,7 +520,7 @@ export class Kiteretsu {
 
   /** Resolve a base path (without extension) to an actual file on disk. */
   private resolveFilePath(targetBase: string): string | null {
-    if (fs.existsSync(targetBase) && fs.statSync(targetBase).isFile()) {
+    if (this.fileSystemCache.has(targetBase)) {
       return targetBase;
     }
 
@@ -530,19 +539,19 @@ export class Kiteretsu {
     for (const base of candidateBases) {
       for (const ext of exts) {
         const candidate = base + ext;
-        if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+        if (this.fileSystemCache.has(candidate)) {
           return candidate;
         }
         // Language-specific directory entry points
         const dirCandidates = [
-          path.join(base, 'index' + ext),      // JS/TS
-          path.join(base, '__init__' + ext),    // Python
-          path.join(base, 'mod' + ext),         // Rust
-          path.join(base, 'lib' + ext),         // Rust/Elixir
-          path.join(base, 'main' + ext),        // Go/C
+          path.join(base, 'index' + ext).replace(/\\/g, '/'),      // JS/TS
+          path.join(base, '__init__' + ext).replace(/\\/g, '/'),    // Python
+          path.join(base, 'mod' + ext).replace(/\\/g, '/'),         // Rust
+          path.join(base, 'lib' + ext).replace(/\\/g, '/'),         // Rust/Elixir
+          path.join(base, 'main' + ext).replace(/\\/g, '/'),        // Go/C
         ];
         for (const dc of dirCandidates) {
-          if (fs.existsSync(dc) && fs.statSync(dc).isFile()) {
+          if (this.fileSystemCache.has(dc)) {
             return dc;
           }
         }
