@@ -452,8 +452,9 @@ export class CodeParser {
     const imports = this.parseImportsWithRegex(ext, content) || [];
 
     // 2. Tree-sitter Pass (Deep)
-    const treeSitterFallbackExts = new Set(['.py', '.go', '.rs', '.rb', '.c', '.cpp', '.h', '.hpp', '.java', '.cs', '.php', '.swift', '.kt', '.scala', '.lua', '.dart', '.ex', '.zig']);
-    if (symbols.length > 0 && imports.length > 0 && !treeSitterFallbackExts.has(ext)) {
+    // We always prefer Tree-sitter for high-fidelity languages like TS/JS/Python
+    const forceDeepParse = new Set(['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.rb', '.c', '.cpp', '.h', '.hpp', '.java', '.cs', '.php', '.swift', '.kt', '.scala', '.lua', '.dart', '.ex', '.zig']);
+    if (symbols.length > 0 && imports.length > 0 && !forceDeepParse.has(ext)) {
       return { symbols, imports };
     }
 
@@ -594,6 +595,10 @@ export class CodeParser {
         }
         for (const match of content.matchAll(/\bclass\s+([A-Za-z_$][\w$]*)\b/g)) {
           addSymbol(match[1], 'class', match.index);
+        }
+        // Class methods: name(...) {
+        for (const match of content.matchAll(/\n\s*([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{/g)) {
+          addSymbol(match[1], 'method', match.index + match[0].indexOf(match[1]));
         }
         for (const match of content.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/g)) {
           addSymbol(match[1], 'variable', match.index);

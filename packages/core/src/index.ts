@@ -34,6 +34,10 @@ export class Kiteretsu {
     this.config = config;
   }
 
+  getRootDir() {
+    return this.rootDir;
+  }
+
   get db(): Database {
     if (!this._db) {
       const dbPath = this.config.dbPath || path.join(this.rootDir, '.kiteretsu', 'memory', 'kiteretsu.sqlite');
@@ -90,6 +94,10 @@ export class Kiteretsu {
       this._embeddings = new EmbeddingEngine();
     }
     return this._embeddings;
+  }
+
+  public getDatabase() {
+    return this.db;
   }
 
   async indexFile(filePath: string): Promise<void> {
@@ -332,6 +340,33 @@ export class Kiteretsu {
     }
   }
 
+  async getBlastRadius(filePath: string): Promise<string[]> {
+    const knex = this.db.getKnex();
+    let fullPath = path.resolve(filePath).replace(/\\/g, '/');
+    if (process.platform === 'win32' && /^[a-z]:/i.test(fullPath)) {
+      fullPath = fullPath[0].toLowerCase() + fullPath.slice(1);
+    }
+
+    const relativePath = path.relative(this.rootDir, fullPath).replace(/\\/g, '/');
+    const file = await knex('files')
+      .whereRaw('LOWER(path) = LOWER(?)', [relativePath])
+      .first();
+    if (!file) return [];
+
+    // Find all files that depend on this one
+    const dependents = await knex('graph_edges')
+      .where({ target_type: 'file', target_id: file.id })
+      .select('source_id');
+
+    if (dependents.length === 0) return [];
+
+    const dependentFiles = await knex('files')
+      .whereIn('id', dependents.map(d => d.source_id))
+      .select('path');
+
+    return dependentFiles.map(f => f.path);
+  }
+
   async init() {
     await this.db.initialize();
     await this.populatePackageMap();
@@ -413,12 +448,12 @@ export class Kiteretsu {
         const fullPath = path.resolve(this.rootDir, relativePath);
         await this.indexFile(fullPath);
         await knex('files').where({ path: relativePath }).update({ stale: false });
-        
+
         processedCount++;
         if (onProgress) {
           onProgress(30 + Math.floor((processedCount / toProcess) * 70), 100, `Indexing: ${relativePath}`);
         }
-        
+
         // Safety GC
         if (processedCount % 50 === 0 && (global as any).gc) (global as any).gc();
       } catch (error: any) {
