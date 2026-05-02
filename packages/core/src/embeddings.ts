@@ -9,7 +9,7 @@ export class EmbeddingEngine {
   private modelName = 'Xenova/all-MiniLM-L6-v2';
   private limit = pLimit(2);
 
-  constructor() {}
+  constructor() { }
 
   private async getExtractor() {
     if (!this.initPromise) {
@@ -28,7 +28,7 @@ export class EmbeddingEngine {
     if (texts.length === 0) return [];
     const extractor = await this.getExtractor();
     const output = await this.limit(() => extractor(texts, { pooling: 'mean', normalize: true }));
-    
+
     // Convert the flat data into an array of vectors
     const vectorSize = output.data.length / texts.length;
     const results: number[][] = [];
