@@ -244,6 +244,36 @@ program
   });
 
 program
+  .command('search <query>')
+  .description('Semantic search across the codebase')
+  .action(async (query) => {
+    const spinner = ora(`Searching for "${query}"...`).start();
+    try {
+      const results = await getKiteretsu().semanticSearch(query);
+      spinner.stop();
+      
+      if (!results || results.length === 0) {
+        console.log(chalk.yellow('No results found.'));
+        return;
+      }
+
+      console.log(chalk.cyan(`\nTop semantic matches for: "${query}"`));
+      console.log(chalk.gray(`(Higher percentage means stronger conceptual similarity)\n`));
+
+      results.forEach((res, i) => {
+        const percentage = Math.max(0, Math.round((1 - res.distance) * 100));
+        const color = percentage > 50 ? chalk.green : (percentage > 25 ? chalk.yellow : chalk.white);
+        
+        console.log(`${chalk.white(i + 1 + '.')} ${chalk.bold(res.path)} ${color(`[${percentage}% Match]`)}`);
+      });
+      console.log('');
+      await getKiteretsu().destroy();
+    } catch (e: any) {
+      spinner.fail(chalk.red(`Error: ${e.message}`));
+    }
+  });
+
+program
   .command('tests')
   .description('Find and optionally run tests related to specific files')
   .option('-f, --files <files...>', 'Source files to find tests for')

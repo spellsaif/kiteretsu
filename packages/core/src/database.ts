@@ -1,6 +1,7 @@
 import knex, { Knex } from 'knex';
 import path from 'path';
 import fs from 'fs-extra';
+import { getLoadablePath } from 'sqlite-vec';
 
 export class Database {
   private db: Knex;
@@ -15,6 +16,16 @@ export class Database {
       client: 'better-sqlite3',
       connection: {
         filename: dbPath,
+      },
+      pool: {
+        afterCreate: (conn: any, cb: any) => {
+          try {
+            conn.loadExtension(getLoadablePath());
+            cb(null, conn);
+          } catch (e: any) {
+            cb(e, conn);
+          }
+        }
       },
       useNullAsDefault: true,
     });
@@ -33,6 +44,13 @@ export class Database {
         table.boolean('stale').defaultTo(false);
         table.timestamp('last_indexed').defaultTo(this.db.fn.now());
         table.timestamps(true, true);
+      });
+    }
+
+    // Ensure embedding column exists (for semantic search)
+    if (!(await this.db.schema.hasColumn('files', 'embedding'))) {
+      await this.db.schema.table('files', (table) => {
+        table.binary('embedding');
       });
     }
 

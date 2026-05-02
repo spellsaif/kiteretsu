@@ -5,6 +5,7 @@ import type { CodeAnalyzer } from './analyzer.js';
 import path from 'path';
 import fs from 'fs-extra';
 import pLimit from 'p-limit';
+import { EmbeddingEngine } from './embeddings.js';
 
 export interface KiteretsuConfig {
   rootDir: string;
@@ -16,6 +17,7 @@ export class Kiteretsu {
   private _scanner?: Scanner;
   private _parser?: CodeParser;
   private _analyzer?: CodeAnalyzer;
+  private _embeddings?: EmbeddingEngine;
   private rootDir: string;
   private config: KiteretsuConfig;
   private packageMap: Map<string, string> = new Map();
@@ -83,6 +85,13 @@ export class Kiteretsu {
     return this._parser;
   }
 
+  private getEmbeddings(): EmbeddingEngine {
+    if (!this._embeddings) {
+      this._embeddings = new EmbeddingEngine();
+    }
+    return this._embeddings;
+  }
+
   async indexFile(filePath: string): Promise<void> {
     const knex = this.db.getKnex();
 
@@ -112,6 +121,21 @@ export class Kiteretsu {
         stale: false,
         last_indexed: knex.fn.now()
       });
+    }
+    // 1.5 Generate and store semantic embedding
+    try {
+      const content = await fs.readFile(fullPath, 'utf8');
+      const engine = this.getEmbeddings();
+      const prepContent = await engine.prepareFileContent(fullPath, content);
+      const vector = await engine.generateEmbedding(prepContent);
+      const vectorBuffer = Buffer.from(new Float32Array(vector).buffer);
+
+      await knex('files').where({ id: fileId }).update({
+        embedding: vectorBuffer
+      });
+    } catch (e: any) {
+      const debugLog = path.resolve(this.rootDir, '.kiteretsu', 'debug.log');
+      try { fs.appendFileSync(debugLog, `[Embeddings] Failed for ${path.basename(fullPath)}: ${e.message}\n`); } catch { }
     }
 
     // 2. Parse symbols & imports
@@ -282,6 +306,27 @@ export class Kiteretsu {
     }
   }
 
+  async semanticSearch(query: string, limit: number = 10): Promise<Array<{ path: string; distance: number }>> {
+    await this.db.initialize();
+    const knex = this.db.getKnex();
+    const engine = this.getEmbeddings();
+    const vector = await engine.generateEmbedding(query);
+    const vectorBuffer = Buffer.from(new Float32Array(vector).buffer);
+
+    // Use scalar distance function for linear search (extremely fast for < 10k files)
+    const results = await knex.raw(`
+      SELECT 
+        path,
+        vec_distance_cosine(embedding, ?) as distance
+      FROM files
+      WHERE embedding IS NOT NULL
+      ORDER BY distance ASC
+      LIMIT ?
+    `, [vectorBuffer, limit]);
+
+    return results;
+  }
+
   async removeFile(filePath: string) {
     const knex = this.db.getKnex();
     let fullPath = path.resolve(filePath).replace(/\\/g, '/');
@@ -295,6 +340,10 @@ export class Kiteretsu {
     if (file) {
       // Cascade deletion handles graph_edges and symbols
       await knex('files').where({ id: file.id }).delete();
+      // Manually cleanup VSS index as it's a virtual table
+      try {
+        await knex.raw('DELETE FROM vec_files WHERE rowid = ?', [file.id]);
+      } catch { }
     }
   }
 
@@ -335,10 +384,10 @@ export class Kiteretsu {
     }
 
     // ─── Pass 1: Register all files & check for changes (Parallel) ───
-    const existingFiles = await knex('files').select('id', 'path', 'hash', 'stale');
+    const existingFiles = await knex('files').select('id', 'path', 'hash', 'stale', 'embedding');
     const existingFilesMap = new Map(existingFiles.map(f => [f.path, f]));
     
-    const limit = pLimit(20);
+    const limit = pLimit(3);
     const filesToProcess: string[] = [];
     const fileMap = new Map<string, number>();
     let registeredCount = 0;
@@ -360,7 +409,7 @@ export class Kiteretsu {
         filesToProcess.push(relativePath);
       } else {
         fileId = existingFile.id;
-        if (existingFile.hash !== hash || existingFile.stale) {
+        if (existingFile.hash !== hash || existingFile.stale || !existingFile.embedding) {
           await knex('files').where({ id: fileId }).update({
             hash: hash,
             stale: true,
@@ -672,6 +721,26 @@ export class Kiteretsu {
     // 3. Multi-Field Weighted Scoring
     const scores = new Map<number, { score: number; path: string; summary: string; stale: boolean }>();
 
+    // ─── A. Semantic Pass (Conceptual) ───
+    try {
+      const semanticResults = await this.semanticSearch(task, 10);
+      for (const res of semanticResults) {
+        // Convert distance to similarity score (0 to 1)
+        const similarity = Math.max(0, 1 - res.distance);
+        if (similarity < 0.25) continue;
+
+        const file = await knex('files').where({ path: res.path }).first();
+        if (file) {
+          const current = scores.get(file.id) || { score: 0, path: file.path, summary: file.summary, stale: !!file.stale };
+          current.score += similarity * 15.0; // High weight for conceptual match
+          scores.set(file.id, current);
+        }
+      }
+    } catch (e) {
+      // Fallback if semantic search fails
+    }
+
+    // ─── B. Keyword Pass (Structural) ───
     for (const kw of rawKeywords) {
       const idf = keywordSignificance.get(kw) || 1;
 
@@ -701,14 +770,19 @@ export class Kiteretsu {
       }
     }
 
-    const topCandidates = Array.from(scores.entries())
-      .sort((a, b) => b[1].score - a[1].score)
-      .slice(0, 7) // Increased candidate pool
-      .map(([id, data]) => ({ id, ...data }));
+    const allCandidates = Array.from(scores.entries())
+      .sort((a, b) => b[1].score - a[1].score);
 
-    if (topCandidates.length === 0) {
+    if (allCandidates.length === 0) {
       return { task, strategy: "No relevant files found.", read_first: [], blast_radius: [], tests_to_run: [], optional_read: [], rules: [], warnings: [] };
     }
+
+    // Relative pruning: Keep results that are at least 40% as strong as the top result
+    const maxScore = allCandidates[0][1].score;
+    const topCandidates = allCandidates
+      .filter(([id, data]) => data.score >= maxScore * 0.4)
+      .slice(0, 5) // Limit noise to top 5 most relevant
+      .map(([id, data]) => ({ id, ...data }));
 
     // 2. Build Intelligence Accretion (Blast Radius + Rules + Tests)
     const analyzer = await this.getAnalyzer();
@@ -717,6 +791,12 @@ export class Kiteretsu {
 
     for (const f of topCandidates) {
       const fullPath = path.resolve(this.rootDir, f.path);
+      const fileExt = path.extname(f.path).toLowerCase();
+      
+      // Only calculate blast radius and related tests for actual source code files
+      const codeExts = ['.ts', '.tsx', '.js', '.jsx', '.py', '.rs', '.go', '.java', '.kt', '.cpp', '.h', '.cs'];
+      if (!codeExts.includes(fileExt)) continue;
+
       const radius = await analyzer.getBlastRadius(fullPath);
       radius.forEach(r => {
         const rel = r.startsWith('UNRESOLVABLE: ')
