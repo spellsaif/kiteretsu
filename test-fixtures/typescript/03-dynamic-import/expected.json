@@ -1,0 +1,9 @@
+{
+  "trigger_file": "test-fixtures/typescript/03-dynamic-import/plugin.ts",
+  "expected_blast_radius": [
+    "UNRESOLVABLE: test-fixtures/typescript/03-dynamic-import/loader.ts"
+  ],
+  "expected_NOT_in_blast_radius": [],
+  "notes": "Dynamic imports with template literals are unresolvable statically.",
+  "failure_mode": "If the tool claims to resolve this precisely without flagging it as unresolvable/dynamic, it is lying."
+}

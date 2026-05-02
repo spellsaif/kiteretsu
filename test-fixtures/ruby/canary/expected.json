@@ -1,0 +1,8 @@
+{
+  "trigger_file": "test-fixtures/ruby/canary/core/utils.rb",
+  "expected_blast_radius": [
+    "test-fixtures/ruby/canary/d1.rb"
+  ],
+  "expected_NOT_in_blast_radius": [],
+  "notes": "Canary test for ruby"
+}

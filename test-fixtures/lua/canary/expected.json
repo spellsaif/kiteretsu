@@ -1,0 +1,8 @@
+{
+  "trigger_file": "test-fixtures/lua/canary/core/utils.lua",
+  "expected_blast_radius": [
+    "test-fixtures/lua/canary/d1.lua"
+  ],
+  "expected_NOT_in_blast_radius": [],
+  "notes": "Canary test for lua"
+}

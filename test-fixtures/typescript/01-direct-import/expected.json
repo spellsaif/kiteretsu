@@ -1,0 +1,9 @@
+{
+  "trigger_file": "test-fixtures/typescript/01-direct-import/userService.ts",
+  "expected_blast_radius": [
+    "test-fixtures/typescript/01-direct-import/authMiddleware.ts"
+  ],
+  "expected_NOT_in_blast_radius": [],
+  "notes": "Basic direct import case.",
+  "failure_mode": "If userService is changed, authMiddleware must be in the blast radius."
+}

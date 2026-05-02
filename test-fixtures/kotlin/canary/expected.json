@@ -1,0 +1,8 @@
+{
+  "trigger_file": "test-fixtures/kotlin/canary/core/utils.kt",
+  "expected_blast_radius": [
+    "test-fixtures/kotlin/canary/d1.kt"
+  ],
+  "expected_NOT_in_blast_radius": [],
+  "notes": "Canary test for kotlin"
+}

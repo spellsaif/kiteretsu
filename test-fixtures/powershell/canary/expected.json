@@ -1,0 +1,8 @@
+{
+  "trigger_file": "test-fixtures/powershell/canary/core/utils.ps1",
+  "expected_blast_radius": [
+    "test-fixtures/powershell/canary/d1.ps1"
+  ],
+  "expected_NOT_in_blast_radius": [],
+  "notes": "Canary test for powershell"
+}

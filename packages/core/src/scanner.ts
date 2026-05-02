@@ -14,12 +14,42 @@ export class Scanner {
 
   async scan(pattern?: string | string[]) {
     const include = pattern || this.options.include || ['**/*'];
-    const exclude = this.options.exclude || ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**', '**/.kiteretsu/**', '**/package-lock.json', '**/scratch/**', '**/temp/**'];
+    const defaultExclude = [
+      '**/.git/**',
+      '**/.kiteretsu/**',
+      '**/.turbo/**',
+      '**/.cache/**',
+      '**/.next/**',
+      '**/.nuxt/**',
+      '**/.svelte-kit/**',
+      '**/.gradle/**',
+      '**/.venv/**',
+      '**/venv/**',
+      '**/__pycache__/**',
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/build/**',
+      '**/target/**',
+      '**/vendor/**',
+      '**/coverage/**',
+      '**/out/**',
+      '**/scratch/**',
+      '**/temp/**',
+      '**/*.pyc',
+      '**/*.tsbuildinfo',
+      '**/pnpm-lock.yaml',
+      '**/package-lock.json',
+      '**/yarn.lock',
+    ];
+    const exclude = [...new Set([...(this.options.exclude || []), ...defaultExclude])];
 
     const files = await globby(include, {
       cwd: this.options.rootDir,
       ignore: exclude,
       absolute: true,
+      onlyFiles: true,
+      followSymbolicLinks: false,
+      gitignore: true,
     });
 
     return files.map(f => path.relative(this.options.rootDir, f).replace(/\\/g, '/'));

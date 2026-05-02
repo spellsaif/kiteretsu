@@ -6,6 +6,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { Kiteretsu } from '@kiteretsu/core';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 export async function runMcpServer(customRootDir?: string) {
   const finalRootDir = customRootDir || process.cwd();
@@ -183,7 +184,13 @@ export async function runMcpServer(customRootDir?: string) {
 }
 
 // Auto-start if run directly
-if (require.main === module) {
+const isMain = process.argv[1] && (
+  process.argv[1] === fileURLToPath(import.meta.url) ||
+  process.argv[1].endsWith('mcp-server/dist/index.js') ||
+  process.argv[1].endsWith('mcp-server/src/index.ts')
+);
+
+if (isMain) {
   runMcpServer().catch((error) => {
     console.error('Fatal error in MCP server:', error);
     process.exit(1);

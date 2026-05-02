@@ -23,68 +23,68 @@ export class CodeAnalyzer {
   // Find what other files depend on this file
   async getBlastRadius(filePath: string): Promise<string[]> {
     let fullPath = path.resolve(filePath).replace(/\\/g, '/');
-    if (process.platform === 'win32' && /^[a-z]:/i.test(fullPath)) {
-      fullPath = fullPath[0].toLowerCase() + fullPath.slice(1);
+    if (process.platform === 'win32') {
+      if (/^[a-z]:/i.test(fullPath)) {
+        fullPath = fullPath[0].toLowerCase() + fullPath.slice(1);
+      }
     }
     
     let relativePath = path.relative(this.rootDir, fullPath).replace(/\\/g, '/');
     if (relativePath.startsWith('./')) relativePath = relativePath.slice(2);
     
     const knex = this.db.getKnex();
+    const blastRadius = new Set<string>();
+    const queue: string[] = [relativePath];
+    const visited = new Set<string>();
 
-    try {
-      // 1. Try Fast Path: Database Query
-      const file = await knex('files')
-        .whereRaw('LOWER(path) = ?', [relativePath.toLowerCase()])
-        .first();
-      if (file) {
-        const edges = await knex('graph_edges')
-          .where({ target_id: file.id, relation: 'imports' })
-          .select('source_id');
+    while (queue.length > 0) {
+      const currentRelPath = queue.shift()!;
+      if (visited.has(currentRelPath)) continue;
+      visited.add(currentRelPath);
+
+      try {
+        const file = await knex('files')
+          .whereRaw('LOWER(path) = ?', [currentRelPath.toLowerCase()])
+          .first();
         
-        if (edges.length > 0) {
-          const sourceIds = edges.map(e => e.source_id);
-          const sourceFiles = await knex('files').whereIn('id', sourceIds);
-          return sourceFiles.map(f => path.resolve(this.rootDir, f.path));
-        }
-      }
-    } catch (error) {
-      // Fallback to slow path on DB error
-    }
+        if (file) {
+          const dependents = await knex('graph_edges')
+            .join('files', 'graph_edges.source_id', 'files.id')
+            .where({ 'graph_edges.target_id': file.id })
+            .where('graph_edges.relation', 'imports')
+            .select('files.path');
 
-    // 2. Slow Path: Static Analysis with ts-morph
-    if (!this.project) return [];
-    const sourceFile = this.project.getSourceFile(filePath);
-    if (!sourceFile) return [];
-
-    const referringFiles = new Set<string>();
-    
-    // Check references to exported declarations
-    const exportedDeclarations = sourceFile.getExportedDeclarations();
-    for (const [name, declarations] of exportedDeclarations) {
-      for (const declaration of declarations) {
-        // @ts-ignore - simple implementation
-        if (declaration.findReferences) {
-          // @ts-ignore
-          const referencedSymbols = declaration.findReferences();
-          for (const symbol of referencedSymbols) {
-            for (const reference of symbol.getReferences()) {
-              const refFilePath = reference.getSourceFile().getFilePath();
-              if (refFilePath !== filePath) {
-                referringFiles.add(refFilePath);
-              }
+          const dynamicDependents = await knex('graph_edges')
+            .join('files', 'graph_edges.source_id', 'files.id')
+            .where({ 'graph_edges.target_id': file.id })
+            .where('graph_edges.relation', 'imports:dynamic')
+            .select('files.path');
+           
+          for (const dep of dependents) {
+            const depRelPath = dep.path;
+            if (!visited.has(depRelPath)) {
+              blastRadius.add(path.resolve(this.rootDir, depRelPath));
+              queue.push(depRelPath);
             }
           }
+
+          for (const dep of dynamicDependents) {
+            blastRadius.add(`UNRESOLVABLE: ${path.resolve(this.rootDir, dep.path)}`);
+          }
         }
+      } catch (error) {
+        // Fallback or log
       }
     }
 
-    return Array.from(referringFiles);
+    return Array.from(blastRadius);
   }
 
   // If this file is a source file, which test files cover it?
   async getRelatedTests(filePath: string): Promise<string[]> {
     const blastRadius = await this.getBlastRadius(filePath);
-    return blastRadius.filter(f => f.includes('.test.') || f.includes('.spec.'));
+    return blastRadius
+      .map(f => f.startsWith('UNRESOLVABLE: ') ? f.slice('UNRESOLVABLE: '.length) : f)
+      .filter(f => f.includes('.test.') || f.includes('.spec.'));
   }
 }

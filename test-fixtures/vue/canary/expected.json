@@ -1,0 +1,8 @@
+{
+  "trigger_file": "test-fixtures/vue/canary/core/utils.vue",
+  "expected_blast_radius": [
+    "test-fixtures/vue/canary/d1.vue"
+  ],
+  "expected_NOT_in_blast_radius": [],
+  "notes": "Canary test for vue"
+}

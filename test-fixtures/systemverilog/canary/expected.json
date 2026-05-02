@@ -1,0 +1,8 @@
+{
+  "trigger_file": "test-fixtures/systemverilog/canary/core/utils.sv",
+  "expected_blast_radius": [
+    "test-fixtures/systemverilog/canary/d1.sv"
+  ],
+  "expected_NOT_in_blast_radius": [],
+  "notes": "Canary test for systemverilog"
+}

@@ -2,13 +2,11 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
+import cliProgress from 'cli-progress';
 import boxen from 'boxen';
 import gradient from 'gradient-string';
 import { Kiteretsu } from '@kiteretsu/core';
 import { CodeWatcher } from '@kiteretsu/core/watcher.js';
-import { startServer } from '@kiteretsu/server';
-import { runMcpServer } from '@kiteretsu/mcp-server';
-import open from 'open';
 import path from 'path';
 import fs from 'fs-extra';
 
@@ -91,10 +89,11 @@ program
         { padding: 1, margin: 1, borderStyle: 'round', borderColor: 'cyan' }
       ));
       await getKiteretsu().destroy();
-      process.exit(0);
+      return;
     } catch (error: any) {
       spinner.fail(chalk.red('Initialization failed: ' + error.message));
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
   });
 
@@ -102,11 +101,24 @@ program
   .command('index')
   .description('Index the codebase and build memory')
   .action(async () => {
-    const spinner = ora('Scanning and indexing files...').start();
+    const progressBar = new cliProgress.SingleBar({
+      format: chalk.cyan('  Indexing ') + '|' + chalk.cyan('{bar}') + '| {percentage}% | {message}',
+      barCompleteChar: '\u2588',
+      barIncompleteChar: '\u2591',
+      hideCursor: true
+    }, cliProgress.Presets.shades_classic);
+
+    console.log(chalk.cyan('  Starting codebase analysis...'));
+    progressBar.start(100, 0, { message: 'Scanning...' });
+
     try {
-      const stats = await getKiteretsu().index();
-      spinner.succeed(chalk.green('✨ Indexing complete!'));
-      console.log(boxen(
+      const stats = await getKiteretsu().index((current, total, message) => {
+        progressBar.update(current, { message });
+      });
+      progressBar.update(100, { message: 'Complete!' });
+      progressBar.stop();
+
+      console.log('\n' + boxen(
         [
           chalk.white(`Files indexed:    ${chalk.bold.cyan(String(stats.files))}`),
           chalk.white(`Symbols found:    ${chalk.bold.cyan(String(stats.symbols))}`),
@@ -115,10 +127,12 @@ program
         { padding: 1, margin: 1, borderStyle: 'round', borderColor: 'green' }
       ));
       await getKiteretsu().destroy();
-      process.exit(0);
+      return;
     } catch (error: any) {
-      spinner.fail(chalk.red('Indexing failed: ' + error.message));
-      process.exit(1);
+      progressBar.stop();
+      console.error(chalk.red('\nIndexing failed: ' + error.message));
+      process.exitCode = 1;
+      return;
     }
   });
 
@@ -183,10 +197,11 @@ program
         console.log(''); // trailing newline
       }
       await getKiteretsu().destroy();
-      process.exit(0);
+      return;
     } catch (error: any) {
       spinner.fail(chalk.red('Context compilation failed: ' + error.message));
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
   });
 
@@ -201,10 +216,11 @@ program
       await getKiteretsu().addRule(name, description, options.scope, options.value);
       spinner.succeed(chalk.green('✨ Rule recorded!'));
       await getKiteretsu().destroy();
-      process.exit(0);
+      return;
     } catch (error: any) {
       spinner.fail(chalk.red('Failed to record rule: ' + error.message));
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
   });
 
@@ -219,10 +235,11 @@ program
       await getKiteretsu().recordTaskOutcome(task, options.type, outcome, options.notes);
       spinner.succeed(chalk.green('✨ Task outcome recorded!'));
       await getKiteretsu().destroy();
-      process.exit(0);
+      return;
     } catch (error: any) {
       spinner.fail(chalk.red('Failed to record task: ' + error.message));
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
   });
 
@@ -234,7 +251,8 @@ program
   .action(async (options) => {
     if (!options.files || options.files.length === 0) {
       console.log(chalk.red('❌ Please provide at least one file using --files'));
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
 
     const spinner = ora('Finding related tests...').start();
@@ -255,10 +273,44 @@ program
         }
       }
       await getKiteretsu().destroy();
-      process.exit(0);
+      return;
     } catch (error: any) {
       spinner.fail(chalk.red('Failed to find tests: ' + error.message));
-      process.exit(1);
+      process.exitCode = 1;
+      return;
+    }
+  });
+
+program
+  .command('blast-radius <file>')
+  .description('Calculate the blast radius of a specific file')
+  .action(async (file) => {
+    const spinner = ora(`Calculating blast radius for: ${file}...`).start();
+    try {
+      const fullPath = path.resolve(rootDir, file);
+      const analyzer = await getKiteretsu().getAnalyzer();
+      const radius = await analyzer.getBlastRadius(fullPath);
+      spinner.stop();
+
+      // Normalize paths relative to rootDir for easier testing
+      const normalizedRadius = radius.map((f: string) => {
+        if (f.startsWith('UNRESOLVABLE: ')) {
+          return `UNRESOLVABLE: ${path.relative(rootDir, f.slice('UNRESOLVABLE: '.length)).replace(/\\/g, '/')}`;
+        }
+        return path.relative(rootDir, f).replace(/\\/g, '/');
+      });
+      
+      console.log(JSON.stringify({
+        file: path.relative(rootDir, fullPath).replace(/\\/g, '/'),
+        blast_radius: normalizedRadius
+      }, null, 2));
+
+      await getKiteretsu().destroy();
+      return;
+    } catch (error: any) {
+      spinner.fail(chalk.red('Blast radius calculation failed: ' + error.message));
+      process.exitCode = 1;
+      return;
     }
   });
 
@@ -269,6 +321,10 @@ program
   .option('-p, --port <port>', 'Port to run the UI on', '3000')
   .action(async (options) => {
     console.log(chalk.bold.cyan('\n🚀 Launching Kiteretsu intelligence...'));
+    const [{ startServer }, { default: open }] = await Promise.all([
+      import('@kiteretsu/server'),
+      import('open')
+    ]);
 
     // 1. Start Watcher (Self-healing memory)
     const watcher = new CodeWatcher(getKiteretsu());
@@ -288,10 +344,12 @@ program
   .description('Start the Kiteretsu MCP server')
   .action(async () => {
     try {
+      const { runMcpServer } = await import('@kiteretsu/mcp-server');
       await runMcpServer(rootDir);
     } catch (error: any) {
       console.error(chalk.red('MCP Server failed: ' + error.message));
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
   });
 

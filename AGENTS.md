@@ -43,3 +43,18 @@ Or use the MCP tool:
 ---
 
 > **Note**: Memory helps routing. Source code remains the truth. Always read the current source before editing.
+
+# 📦 Kiteretsu Intelligence Layer
+
+## ⚠️ MANDATORY PROTOCOL
+Before answering ANY questions about architecture, dependencies, or blast radius, you **MUST** call Kiteretsu (via the `get_context_pack` tool or the `kiteretsu context "<task>"` command). 
+
+**NEVER** rely on your internal memory for project structure. The source code is the only truth, and Kiteretsu is your only window into it.
+
+### 🛠 Workflow
+1. **Context**: Run `kiteretsu context "<task>"` before planning.
+2. **Read First**: Always read the files listed in the "Read First" section.
+3. **Verify**: Find related tests using `kiteretsu tests --files <changed_files>`.
+4. **Governance**: Use `kiteretsu record-rule <name> <description>` to save architectural rules. (DO NOT just write them in markdown files; use the tool so they can be enforced).
+5. **Learn**: Record task outcomes using `kiteretsu record-task "<task>" <success|failure>`.
+

@@ -12,22 +12,24 @@
   },
   "dependencies": {
     "@kiteretsu/core": "workspace:*",
-    "@kiteretsu/server": "workspace:*",
     "@kiteretsu/mcp-server": "workspace:*",
-    "commander": "^12.0.0",
-    "chalk": "^5.3.0",
-    "ora": "^8.0.1",
+    "@kiteretsu/server": "workspace:*",
     "boxen": "^7.1.1",
+    "chalk": "^5.3.0",
+    "cli-progress": "^3.12.0",
+    "commander": "^12.0.0",
+    "fs-extra": "^11.2.0",
     "gradient-string": "^2.0.2",
     "inquirer": "^9.2.14",
-    "fs-extra": "^11.2.0",
-    "open": "^10.1.0"
+    "open": "^10.1.0",
+    "ora": "^8.0.1"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
-    "tsx": "^4.0.0",
-    "@types/inquirer": "^9.0.7",
+    "@types/cli-progress": "^3.11.6",
     "@types/fs-extra": "^11.0.4",
-    "@types/open": "^6.2.1"
+    "@types/inquirer": "^9.0.7",
+    "@types/open": "^6.2.1",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
   }
 }

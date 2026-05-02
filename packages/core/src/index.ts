@@ -4,6 +4,7 @@ import type { CodeParser } from './parser.js';
 import type { CodeAnalyzer } from './analyzer.js';
 import path from 'path';
 import fs from 'fs-extra';
+import pLimit from 'p-limit';
 
 export interface KiteretsuConfig {
   rootDir: string;
@@ -118,36 +119,52 @@ export class Kiteretsu {
     // Symbols
     const symbols = await parser.parseSymbols(fullPath);
     await knex('symbols').where({ file_id: fileId }).delete();
-    for (const sym of symbols) {
-      await knex('symbols').insert({
+    
+    if (symbols.length > 0) {
+      const symbolRecords = symbols.map(sym => ({
         name: sym.name,
         type: sym.type,
         file_id: fileId,
         start_line: sym.startLine,
         end_line: sym.endLine
-      });
+      }));
+      // Batch insert in chunks to avoid SQLite limits if there are thousands of symbols
+      const chunkSize = 100;
+      for (let i = 0; i < symbolRecords.length; i += chunkSize) {
+        await knex('symbols').insert(symbolRecords.slice(i, i + chunkSize));
+      }
     }
 
     // Imports
-    const importSources = await parser.parseImports(fullPath);
+    const importInfos = await parser.parseImports(fullPath);
     await knex('graph_edges')
-      .where({ source_type: 'file', source_id: fileId, relation: 'imports' })
+      .where({ source_type: 'file', source_id: fileId })
+      .whereIn('relation', ['imports', 'imports:type', 'imports:dynamic'])
       .delete();
 
     const fileExt = path.extname(fullPath);
+    const edgeRecords: any[] = [];
+    const seenEdges = new Set<string>();
 
-    for (const sourceRaw of importSources) {
-      let targetPath: string | null = null;
+    for (const info of importInfos) {
+      const sourceRaw = info.source;
+      const relation = info.resolution === 'dynamic'
+        ? 'imports:dynamic'
+        : info.type === 'type'
+          ? 'imports:type'
+          : 'imports';
 
-      // ─── NEW RESOLUTION STRATEGY ───
+      // ─── RESOLUTION STRATEGY ───
       let potentialTargets: string[] = [];
 
       if (['.ts', '.tsx', '.js', '.jsx'].includes(fileExt)) {
         // ── JS/TS Resolution ──
         const source = sourceRaw.replace(/\.(js|jsx|ts|tsx)$/, '');
-        if (source.startsWith('.')) {
-          const resolved = this.resolveImportToPath(path.dirname(fullPath), source);
-          if (resolved) potentialTargets.push(resolved);
+        const resolved = this.resolveImportToPath(path.dirname(fullPath), source) ||
+                         this.resolveImportToPath(path.dirname(fullPath), sourceRaw);
+        
+        if (resolved) {
+          potentialTargets.push(resolved);
         } else {
           // Check package map
           let packageName = '';
@@ -163,59 +180,56 @@ export class Kiteretsu {
           }
           const packageDir = this.packageMap.get(packageName);
           if (packageDir) {
-            const resolved = this.resolveImportToPath(packageDir, subPath || 'src');
-            if (resolved) potentialTargets.push(resolved);
+            const resolvedPkg = this.resolveImportToPath(packageDir, subPath || 'src');
+            if (resolvedPkg) potentialTargets.push(resolvedPkg);
           }
           // Fallback to root-relative
           if (potentialTargets.length === 0) {
-            const resolved = this.resolveImportToPath(this.rootDir, source);
-            if (resolved) potentialTargets.push(resolved);
+            const resolvedRoot = this.resolveImportToPath(this.rootDir, source);
+            if (resolvedRoot) potentialTargets.push(resolvedRoot);
           }
         }
       } else if (fileExt === '.py') {
         // ── Python Resolution ──
-        const resolved = this.resolveImportToPath(path.dirname(fullPath), sourceRaw) ||
-          this.resolveImportToPath(this.rootDir, sourceRaw);
+        let resolved = this.resolveImportToPath(path.dirname(fullPath), sourceRaw);
+        if (!resolved) {
+          resolved = this.resolveImportToPath(this.rootDir, sourceRaw);
+        }
         if (resolved) potentialTargets.push(resolved);
       } else if (fileExt === '.rs') {
         // ── Rust Resolution ──
         const rustPath = sourceRaw.replace(/::/g, '/');
-        let searchBase = this.rootDir;
-        let relativePath = rustPath;
+        const rustTargets: Array<{ baseDir: string; relativePath: string }> = [];
 
         if (sourceRaw.startsWith('crate')) {
-          searchBase = this.findRustCrateRoot(fullPath);
-          relativePath = rustPath.replace(/^crate/, 'src');
-        } else if (sourceRaw.startsWith('super')) {
-          searchBase = path.dirname(fullPath);
-          relativePath = rustPath.replace(/^super/, '..');
-        } else if (sourceRaw.startsWith('self')) {
-          searchBase = path.dirname(fullPath);
-          relativePath = rustPath.replace(/^self/, '.');
-        } else {
-          // Check if it starts with a known crate name in the workspace
-          const firstPart = sourceRaw.split('::')[0];
-          const targetCrateDir = this.crateMap.get(firstPart);
-          if (targetCrateDir) {
-            searchBase = targetCrateDir;
-            // Most crate imports target the lib.rs in src
-            relativePath = 'src/lib';
+          const crateRoot = this.findRustCrateRoot(fullPath);
+          if (crateRoot) {
+            rustTargets.push({ baseDir: crateRoot, relativePath: rustPath.replace(/^crate/, 'src') });
           }
+          rustTargets.push({ baseDir: path.dirname(fullPath), relativePath: rustPath.replace(/^crate\/?/, '') });
+        } else if (sourceRaw.startsWith('super')) {
+          rustTargets.push({ baseDir: path.dirname(fullPath), relativePath: rustPath.replace(/^super/, '..') });
+        } else if (sourceRaw.startsWith('self')) {
+          rustTargets.push({ baseDir: path.dirname(fullPath), relativePath: rustPath.replace(/^self/, '.') });
+        } else {
+          rustTargets.push({ baseDir: this.rootDir, relativePath: rustPath });
         }
 
-        const resolved = this.resolveImportToPath(searchBase, relativePath);
-        if (resolved) potentialTargets.push(resolved);
+        for (const target of rustTargets) {
+          const resolved = this.resolveImportToPath(target.baseDir, target.relativePath);
+          if (resolved) potentialTargets.push(resolved);
+        }
       } else if (fileExt === '.go') {
         // ── Go Resolution ──
         let localPath = sourceRaw;
         const goMod = this.getGoModuleName();
         if (goMod && sourceRaw.startsWith(goMod)) {
-          localPath = sourceRaw.slice(goMod.length + 1);
+          localPath = sourceRaw.slice(goMod.length).replace(/^\//, '');
         }
 
-        const resolvedDir = this.resolveImportToPath(this.rootDir, localPath);
-        if (resolvedDir && fs.statSync(resolvedDir).isDirectory()) {
-          // Link to ALL files in the Go package directory
+        const goBaseDir = localPath.startsWith('.') ? path.dirname(fullPath) : this.rootDir;
+        const resolvedDir = this.resolveImportToPath(goBaseDir, localPath);
+        if (resolvedDir && fs.existsSync(resolvedDir) && fs.statSync(resolvedDir).isDirectory()) {
           const files = fs.readdirSync(resolvedDir);
           for (const f of files) {
             if (f.endsWith('.go')) potentialTargets.push(path.join(resolvedDir, f));
@@ -224,13 +238,11 @@ export class Kiteretsu {
           potentialTargets.push(resolvedDir);
         }
       } else {
-        // ── Generic ──
         const resolved = this.resolveImportToPath(path.dirname(fullPath), sourceRaw) ||
           this.resolveImportToPath(this.rootDir, sourceRaw);
         if (resolved) potentialTargets.push(resolved);
       }
 
-      // ─── REGISTER EDGES ───
       for (let targetPath of potentialTargets) {
         targetPath = path.resolve(targetPath).replace(/\\/g, '/');
         if (process.platform === 'win32' && /^[a-z]:/i.test(targetPath)) {
@@ -244,28 +256,29 @@ export class Kiteretsu {
           .whereRaw('LOWER(path) = ?', [targetRelative.toLowerCase()])
           .first();
 
-        if (target && target.id !== fileId) { // Avoid self-loops
-          // Avoid duplicates
-          const existing = await knex('graph_edges').where({
-            source_id: fileId,
-            target_id: target.id,
-            relation: 'imports'
-          }).first();
-
-          if (!existing) {
-            await knex('graph_edges').insert({
+        if (target && target.id !== fileId) {
+          const edgeKey = `${fileId}:${target.id}:${relation}`;
+          if (!seenEdges.has(edgeKey)) {
+            edgeRecords.push({
               source_type: 'file',
               source_id: fileId,
-              relation: 'imports',
+              relation: relation,
               target_type: 'file',
               target_id: target.id,
-              confidence: 0.8,
-              provenance: 'static_analysis'
+              confidence: info.resolution === 'dynamic' ? 0.3 : info.type === 'type' ? 0.5 : 0.8,
+              provenance: info.resolution === 'dynamic' ? 'dynamic_analysis' : 'static_analysis'
             });
+            seenEdges.add(edgeKey);
           }
         }
       }
+    }
 
+    if (edgeRecords.length > 0) {
+      const chunkSize = 100;
+      for (let i = 0; i < edgeRecords.length; i += chunkSize) {
+        await knex('graph_edges').insert(edgeRecords.slice(i, i + chunkSize));
+      }
     }
   }
 
@@ -306,15 +319,22 @@ export class Kiteretsu {
     }
   }
 
-  async index(): Promise<{ files: number; symbols: number; edges: number }> {
+  async index(onProgress?: (current: number, total: number, message: string) => void): Promise<{ files: number; symbols: number; edges: number }> {
     await this.populatePackageMap();
     await this.discoverRustCrates();
+    
+    if (onProgress) onProgress(0, 100, 'Scanning files...');
     const files = await this.scanner.scan();
+    const totalFiles = files.length;
     const knex = this.db.getKnex();
 
-    // ─── Pass 1: Register all files in the DB ───
+    // ─── Pass 1: Register all files & check for changes (Parallel) ───
+    const limit = pLimit(20);
+    const filesToProcess: string[] = [];
     const fileMap = new Map<string, number>();
-    for (const relativePath of files) {
+    let registeredCount = 0;
+
+    await Promise.all(files.map(relativePath => limit(async () => {
       const fullPath = path.resolve(this.rootDir, relativePath);
       const hash = await this.scanner.getFileHash(fullPath);
 
@@ -325,48 +345,56 @@ export class Kiteretsu {
         [fileId] = await knex('files').insert({
           path: relativePath,
           hash: hash,
-          stale: false,
+          stale: true, // Mark as stale so Pass 2 indexes it
           last_indexed: knex.fn.now()
         });
+        filesToProcess.push(relativePath);
       } else {
         fileId = existingFile.id;
-        if (existingFile.hash !== hash) {
+        if (existingFile.hash !== hash || existingFile.stale) {
           await knex('files').where({ id: fileId }).update({
             hash: hash,
             stale: true,
             last_indexed: knex.fn.now()
           });
+          filesToProcess.push(relativePath);
         }
       }
       fileMap.set(relativePath, fileId);
-    }
+      registeredCount++;
+      if (onProgress) onProgress(Math.floor((registeredCount / totalFiles) * 30), 100, `Registering files... (${registeredCount}/${totalFiles})`);
+    })));
 
-    // ─── Pass 2: Parse symbols & build dependency graph ───
-    let totalSymbols = 0;
-    let totalEdges = 0;
+    // ─── Pass 2: Parse symbols & build dependency graph (Parallel) ───
+    let indexedCount = 0;
+    const toProcessTotal = filesToProcess.length;
 
-    for (const relativePath of files) {
-      const fullPath = path.resolve(this.rootDir, relativePath);
-
-      try {
-        await this.indexFile(fullPath);
-      } catch (error: any) {
-        const debugLog = path.resolve(this.rootDir, '.kiteretsu', 'debug.log');
-        try { fs.appendFileSync(debugLog, `[Indexer] Error indexing ${relativePath}: ${error.message}\n`); } catch { }
-      }
+    if (toProcessTotal > 0) {
+      await Promise.all(filesToProcess.map(relativePath => limit(async () => {
+        const fullPath = path.resolve(this.rootDir, relativePath);
+        try {
+          await this.indexFile(fullPath);
+          // Mark as not stale after successful indexing
+          await knex('files').where({ path: relativePath }).update({ stale: false });
+        } catch (error: any) {
+          const debugLog = path.resolve(this.rootDir, '.kiteretsu', 'debug.log');
+          try { fs.appendFileSync(debugLog, `[Indexer] Error indexing ${relativePath}: ${error.message}\n`); } catch { }
+        }
+        indexedCount++;
+        if (onProgress) {
+          const percent = 30 + Math.floor((indexedCount / toProcessTotal) * 70);
+          onProgress(percent, 100, `Indexing content... (${indexedCount}/${toProcessTotal})`);
+        }
+      })));
+    } else {
+      if (onProgress) onProgress(100, 100, 'Indexing complete (up to date)');
     }
 
     // Refresh counts
     const symbolCount = await knex('symbols').count('id as count').first();
     const edgeCount = await knex('graph_edges').count('id as count').first();
-    totalSymbols = Number(symbolCount?.count || 0);
-    totalEdges = Number(edgeCount?.count || 0);
-
-    // Mark all indexed files as not stale
-    const allIds = Array.from(fileMap.values());
-    if (allIds.length > 0) {
-      await knex('files').whereIn('id', allIds).update({ stale: false });
-    }
+    const totalSymbols = Number(symbolCount?.count || 0);
+    const totalEdges = Number(edgeCount?.count || 0);
 
     return { files: fileMap.size, symbols: totalSymbols, edges: totalEdges };
   }
@@ -431,7 +459,7 @@ export class Kiteretsu {
       if (parent === current) break;
       current = parent;
     }
-    return this.rootDir;
+    return '';
   }
 
   /** 
@@ -441,7 +469,14 @@ export class Kiteretsu {
   private resolveImportToPath(baseDir: string, relativePath: string): string | null {
     if (!relativePath) return null;
 
-    let currentPath = path.resolve(baseDir, relativePath);
+    // Handle dotted paths (Java, C#, Python, Kotlin, Scala)
+    // Only convert if it looks like a dotted path and doesn't have slashes
+    let processedPath = relativePath;
+    if (!relativePath.includes('/') && !relativePath.includes('\\') && relativePath.includes('.')) {
+      processedPath = relativePath.replace(/\./g, '/');
+    }
+
+    let currentPath = path.resolve(baseDir, processedPath);
 
     // Try full path first (with extensions)
     const exact = this.resolveFilePath(currentPath);
@@ -453,7 +488,7 @@ export class Kiteretsu {
     }
 
     // Strip segments from the right (e.g. models/user/get -> models/user.rs)
-    let parts = relativePath.split(/[/\\]/);
+    let parts = processedPath.split(/[/\\]/);
     while (parts.length > 1) {
       parts.pop();
       const candidateBase = path.resolve(baseDir, parts.join('/'));
@@ -465,31 +500,51 @@ export class Kiteretsu {
       }
     }
 
+    // Last resort: search globally in rootDir if it's not a relative path
+    if (!relativePath.startsWith('.')) {
+      const globalResolved = this.resolveFilePath(path.resolve(this.rootDir, processedPath));
+      if (globalResolved) return globalResolved;
+    }
+
     return null;
   }
 
   /** Resolve a base path (without extension) to an actual file on disk. */
   private resolveFilePath(targetBase: string): string | null {
+    if (fs.existsSync(targetBase) && fs.statSync(targetBase).isFile()) {
+      return targetBase;
+    }
+
     const exts = [
       '', '.ts', '.tsx', '.js', '.jsx',
-      '.py', '.go', '.rs', '.java', '.rb',
-      '.c', '.cpp', '.cs', '.php', '.swift', '.kt', '.scala'
+      '.py', '.go', '.rs', '.java', '.rb', '.lua',
+      '.c', '.cpp', '.cs', '.php', '.swift', '.kt', '.scala',
+      '.ps1', '.jl', '.m', '.v', '.sv', '.vue', '.svelte', '.dart', '.ex', '.zig', '.sh', '.h', '.hpp'
     ];
-    for (const ext of exts) {
-      const candidate = targetBase + ext;
-      if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
-        return candidate;
-      }
-      // Language-specific directory entry points
-      const dirCandidates = [
-        path.join(targetBase, 'index' + ext),      // JS/TS
-        path.join(targetBase, '__init__' + ext),    // Python
-        path.join(targetBase, 'mod' + ext),         // Rust
-        path.join(targetBase, 'main' + ext),        // Go/C
-      ];
-      for (const dc of dirCandidates) {
-        if (fs.existsSync(dc) && fs.statSync(dc).isFile()) {
-          return dc;
+    const candidateBases = [targetBase];
+    const parsedTarget = path.parse(targetBase);
+    if (parsedTarget.ext) {
+      candidateBases.push(path.join(parsedTarget.dir, parsedTarget.name));
+    }
+
+    for (const base of candidateBases) {
+      for (const ext of exts) {
+        const candidate = base + ext;
+        if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+          return candidate;
+        }
+        // Language-specific directory entry points
+        const dirCandidates = [
+          path.join(base, 'index' + ext),      // JS/TS
+          path.join(base, '__init__' + ext),    // Python
+          path.join(base, 'mod' + ext),         // Rust
+          path.join(base, 'lib' + ext),         // Rust/Elixir
+          path.join(base, 'main' + ext),        // Go/C
+        ];
+        for (const dc of dirCandidates) {
+          if (fs.existsSync(dc) && fs.statSync(dc).isFile()) {
+            return dc;
+          }
         }
       }
     }
@@ -501,14 +556,34 @@ export class Kiteretsu {
     const base = [
       '**/.kiteretsu/**',
       '**/.git/**',
+      '**/.turbo/**',
+      '**/.cache/**',
+      '**/.next/**',
+      '**/.nuxt/**',
+      '**/.svelte-kit/**',
+      '**/.gradle/**',
+      '**/.venv/**',
+      '**/venv/**',
+      '**/__pycache__/**',
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/build/**',
+      '**/target/**',
+      '**/vendor/**',
+      '**/coverage/**',
+      '**/out/**',
       '**/scratch/**',
       '**/temp/**',
+      '**/*.pyc',
+      '**/*.tsbuildinfo',
+      '**/pnpm-lock.yaml',
+      '**/package-lock.json',
+      '**/yarn.lock',
     ];
 
     // JS/TS
     if (fs.existsSync(path.join(this.rootDir, 'package.json'))) {
-      base.push('**/node_modules/**', '**/dist/**', '**/build/**',
-        '**/pnpm-lock.yaml', '**/package-lock.json', '**/yarn.lock');
+      base.push('**/web_modules/**');
     }
     // Rust
     if (fs.existsSync(path.join(this.rootDir, 'Cargo.toml'))) {
@@ -635,7 +710,9 @@ export class Kiteretsu {
       const fullPath = path.resolve(this.rootDir, f.path);
       const radius = await analyzer.getBlastRadius(fullPath);
       radius.forEach(r => {
-        const rel = path.relative(this.rootDir, r).replace(/\\/g, '/');
+        const rel = r.startsWith('UNRESOLVABLE: ')
+          ? `UNRESOLVABLE: ${path.relative(this.rootDir, r.slice('UNRESOLVABLE: '.length)).replace(/\\/g, '/')}`
+          : path.relative(this.rootDir, r).replace(/\\/g, '/');
         if (!topCandidates.some(tc => tc.path === rel)) blastRadiusFiles.add(rel);
       });
 
@@ -697,8 +774,13 @@ export class Kiteretsu {
   }
 
   async destroy() {
+    if (this._parser) {
+      this._parser.destroy();
+      this._parser = undefined;
+    }
     if (this._db) {
       await this._db.destroy();
+      this._db = undefined;
     }
   }
 }

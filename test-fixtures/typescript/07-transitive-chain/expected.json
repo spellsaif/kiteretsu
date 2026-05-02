@@ -1,0 +1,11 @@
+{
+  "trigger_file": "test-fixtures/typescript/07-transitive-chain/A.ts",
+  "expected_blast_radius": [
+    "test-fixtures/typescript/07-transitive-chain/B.ts",
+    "test-fixtures/typescript/07-transitive-chain/C.ts",
+    "test-fixtures/typescript/07-transitive-chain/D.ts"
+  ],
+  "expected_NOT_in_blast_radius": [],
+  "notes": "Testing a long transitive chain A->B->C->D.",
+  "failure_mode": "Fails if the tool only finds direct dependents (B) but misses C and D."
+}

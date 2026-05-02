@@ -1,0 +1,6 @@
+﻿{
+  "trigger_file": "test-fixtures/typescript/false-positive/only-types.ts",
+  "expected_blast_radius": [],
+  "expected_NOT_in_blast_radius": ["test-fixtures/typescript/false-positive/runtime-user.ts"],
+  "notes": "Changing a type-only file should not trigger a runtime blast radius."
+}

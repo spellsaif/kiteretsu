@@ -1,0 +1,9 @@
+{
+  "trigger_file": "test-fixtures/typescript/05-type-only-import/types.ts",
+  "expected_blast_radius": [],
+  "expected_NOT_in_blast_radius": [
+    "test-fixtures/typescript/05-type-only-import/consumer.ts"
+  ],
+  "notes": "Type-only imports should be excluded from the runtime blast radius.",
+  "failure_mode": "Fails if consumer.ts is included in the blast radius when only types changed."
+}

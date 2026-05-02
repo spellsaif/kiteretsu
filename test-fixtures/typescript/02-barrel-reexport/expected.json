@@ -1,0 +1,10 @@
+{
+  "trigger_file": "test-fixtures/typescript/02-barrel-reexport/auth/login.ts",
+  "expected_blast_radius": [
+    "test-fixtures/typescript/02-barrel-reexport/auth/index.ts",
+    "test-fixtures/typescript/02-barrel-reexport/app.ts"
+  ],
+  "expected_NOT_in_blast_radius": [],
+  "notes": "Testing transitive resolution through a barrel file (index.ts).",
+  "failure_mode": "Fails if the tool doesn't follow the export * from './login' in index.ts."
+}

@@ -1,0 +1,8 @@
+{
+  "trigger_file": "test-fixtures/scala/canary/core/utils.scala",
+  "expected_blast_radius": [
+    "test-fixtures/scala/canary/d1.scala"
+  ],
+  "expected_NOT_in_blast_radius": [],
+  "notes": "Canary test for scala"
+}

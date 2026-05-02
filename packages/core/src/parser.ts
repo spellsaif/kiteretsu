@@ -18,6 +18,12 @@ export interface SymbolInfo {
   endLine: number;
 }
 
+export interface ImportInfo {
+  source: string;
+  type: 'value' | 'type';
+  resolution?: 'static' | 'dynamic';
+}
+
 // ─── Language Configuration ───────────────────────────────────────────────────
 // Maps file extensions to their WASM grammar file name and query definitions.
 // This is the single source of truth for all language support.
@@ -35,28 +41,22 @@ const LANGUAGE_CONFIG: Record<string, LanguageConfig> = {
     symbolQuery: `
       (function_declaration name: (identifier) @func.name)
       (class_declaration name: (type_identifier) @class.name)
-      (interface_declaration name: (type_identifier) @interface.name)
+      (class_declaration name: (identifier) @class.name)
       (method_definition name: (property_identifier) @method.name)
-      (variable_declarator name: (identifier) @var.name)
+      (lexical_declaration (variable_declarator name: (identifier) @var.name))
     `,
-    importQuery: `
-      (import_statement source: (string) @source)
-      (export_statement source: (string) @source)
-    `,
+    importQuery: `(_ [(string) (string_literal)] @source)`,
   },
   '.tsx': {
     wasmFile: 'tree-sitter-tsx.wasm',
     symbolQuery: `
       (function_declaration name: (identifier) @func.name)
       (class_declaration name: (type_identifier) @class.name)
-      (interface_declaration name: (type_identifier) @interface.name)
+      (class_declaration name: (identifier) @class.name)
       (method_definition name: (property_identifier) @method.name)
-      (variable_declarator name: (identifier) @var.name)
+      (lexical_declaration (variable_declarator name: (identifier) @var.name))
     `,
-    importQuery: `
-      (import_statement source: (string) @source)
-      (export_statement source: (string) @source)
-    `,
+    importQuery: `(_ [(string) (string_literal)] @source)`,
   },
   '.js': {
     wasmFile: 'tree-sitter-javascript.wasm',
@@ -64,12 +64,9 @@ const LANGUAGE_CONFIG: Record<string, LanguageConfig> = {
       (function_declaration name: (identifier) @func.name)
       (class_declaration name: (identifier) @class.name)
       (method_definition name: (property_identifier) @method.name)
-      (variable_declarator name: (identifier) @var.name)
+      (lexical_declaration (variable_declarator name: (identifier) @var.name))
     `,
-    importQuery: `
-      (import_statement source: (string) @source)
-      (export_statement source: (string) @source)
-    `,
+    importQuery: `(_ [(string) (string_literal)] @source)`,
   },
   '.jsx': {
     wasmFile: 'tree-sitter-javascript.wasm',
@@ -77,12 +74,19 @@ const LANGUAGE_CONFIG: Record<string, LanguageConfig> = {
       (function_declaration name: (identifier) @func.name)
       (class_declaration name: (identifier) @class.name)
       (method_definition name: (property_identifier) @method.name)
-      (variable_declarator name: (identifier) @var.name)
+      (lexical_declaration (variable_declarator name: (identifier) @var.name))
     `,
-    importQuery: `
-      (import_statement source: (string) @source)
-      (export_statement source: (string) @source)
-    `,
+    importQuery: `(_ [(string) (string_literal)] @source)`,
+  },
+  '.vue': {
+    wasmFile: 'tree-sitter-vue.wasm',
+    symbolQuery: `(attribute_value) @attr.value`,
+    importQuery: `(string) @source`,
+  },
+  '.svelte': {
+    wasmFile: 'tree-sitter-javascript.wasm',
+    symbolQuery: `(variable_declarator name: (identifier) @var.name)`,
+    importQuery: `(string) @source`,
   },
 
   // ── Python ──────────────────────────────────────────────────────────────────
@@ -311,6 +315,39 @@ const LANGUAGE_CONFIG: Record<string, LanguageConfig> = {
     `,
   },
 
+  // ── PowerShell ─────────────────────────────────────────────────────────────
+  '.ps1': {
+    wasmFile: 'tree-sitter-powershell.wasm',
+    symbolQuery: `(function_definition name: (word) @func.name)`,
+    importQuery: `(command name: (command_name) @_cmd argument: (word) @source (#match? @_cmd "^(\\\\.|Import-Module)$"))`,
+  },
+
+  // ── Objective-C ─────────────────────────────────────────────────────────────
+  '.m': {
+    wasmFile: 'tree-sitter-objc.wasm',
+    symbolQuery: `(method_definition) @method.name`,
+    importQuery: `(preproc_import path: (string_literal) @source)`,
+  },
+
+  // ── Julia ───────────────────────────────────────────────────────────────────
+  '.jl': {
+    wasmFile: 'tree-sitter-julia.wasm',
+    symbolQuery: `(function_definition name: (identifier) @func.name)`,
+    importQuery: `(import_statement (import_path (identifier) @source)) (using_statement (import_path (identifier) @source))`,
+  },
+
+  // ── Verilog / SystemVerilog ─────────────────────────────────────────────────
+  '.v': {
+    wasmFile: 'tree-sitter-verilog.wasm',
+    symbolQuery: `(module_declaration name: (identifier) @class.name)`,
+    importQuery: `(include_directive path: (string_literal) @source)`,
+  },
+  '.sv': {
+    wasmFile: 'tree-sitter-verilog.wasm',
+    symbolQuery: `(module_declaration name: (identifier) @class.name)`,
+    importQuery: `(include_directive path: (string_literal) @source)`,
+  },
+
   // ── HTML ────────────────────────────────────────────────────────────────────
   '.html': {
     wasmFile: 'tree-sitter-html.wasm',
@@ -324,21 +361,14 @@ const LANGUAGE_CONFIG: Record<string, LanguageConfig> = {
 export class CodeParser {
   private static initPromise: Promise<void> | null = null;
   private languages: Map<string, Language> = new Map();
-  private parser: Parser | null = null;
 
   constructor() {}
 
-  /**
-   * Initialize the WASM runtime. Called once, cached globally.
-   */
   private async ensureInit(): Promise<void> {
-    if (this.parser) return;
-
     if (!CodeParser.initPromise) {
       CodeParser.initPromise = Parser.init();
     }
     await CodeParser.initPromise;
-    this.parser = new Parser();
   }
 
   /**
@@ -348,22 +378,39 @@ export class CodeParser {
   private async loadLanguage(ext: string): Promise<Language | null> {
     if (this.languages.has(ext)) return this.languages.get(ext)!;
 
+    await this.ensureInit();
     const config = LANGUAGE_CONFIG[ext];
     if (!config) return null;
 
     try {
-      // Resolve the WASM file path from the tree-sitter-wasms package
-      const wasmsDir = path.dirname(require.resolve('tree-sitter-wasms/package.json'));
-      const wasmPath = path.join(wasmsDir, 'out', config.wasmFile);
+      let wasmPath = '';
+      
+      // 1. Try require.resolve safely
+      try {
+        const wasmsDir = path.dirname(require.resolve('tree-sitter-wasms/package.json'));
+        const p = path.join(wasmsDir, 'out', config.wasmFile);
+        if (fs.existsSync(p)) wasmPath = p;
+      } catch (e) {}
 
-      if (!fs.existsSync(wasmPath)) {
-        debugLog(`[Parser] WASM file not found: ${wasmPath}`);
+      // 2. Try process.cwd() fallback
+      if (!wasmPath) {
+        const p = path.join(process.cwd(), 'node_modules', 'tree-sitter-wasms', 'out', config.wasmFile);
+        if (fs.existsSync(p)) wasmPath = p;
+      }
+
+      // 3. Try deep pnpm fallback (for this environment)
+      if (!wasmPath) {
+        const p = path.join(process.cwd(), 'node_modules', '.pnpm', 'tree-sitter-wasms@0.1.13', 'node_modules', 'tree-sitter-wasms', 'out', config.wasmFile);
+        if (fs.existsSync(p)) wasmPath = p;
+      }
+
+      if (!wasmPath) {
+        debugLog(`[Parser] WASM file not found for ${ext}: ${config.wasmFile}`);
         return null;
       }
 
       const language = await Language.load(wasmPath);
       this.languages.set(ext, language);
-      debugLog(`[Parser] ${config.wasmFile} loaded successfully via WASM.`);
       return language;
     } catch (e: any) {
       debugLog(`[Parser] Failed to load WASM for ${ext}: ${e.message}`);
@@ -371,28 +418,44 @@ export class CodeParser {
     }
   }
 
+  destroy(): void {
+    for (const language of this.languages.values()) {
+      try {
+        const disposableLanguage = language as Language & { delete?: () => void };
+        disposableLanguage.delete?.();
+      } catch {}
+    }
+    this.languages.clear();
+  }
+
   async parseSymbols(filePath: string): Promise<SymbolInfo[]> {
     const ext = path.extname(filePath);
     const config = LANGUAGE_CONFIG[ext];
     if (!config || !config.symbolQuery) return [];
 
-    await this.ensureInit();
-    const language = await this.loadLanguage(ext);
-    if (!language || !this.parser) return [];
-
     const content = await fs.readFile(filePath, 'utf8');
-    this.parser.setLanguage(language);
-    const tree = this.parser.parse(content);
-    if (!tree) return [];
+    const regexSymbols = this.parseSymbolsWithRegex(ext, content);
+    const treeSitterFallbackExts = new Set(['.py', '.go', '.rs', '.rb']);
+    if (regexSymbols.length > 0 || !treeSitterFallbackExts.has(ext)) return regexSymbols;
+
+    const language = await this.loadLanguage(ext);
+    if (!language) return [];
+
+    const parser = new Parser();
+    parser.setLanguage(language);
     
+    let tree: any = null;
+    let query: Query | null = null;
     const symbols: SymbolInfo[] = [];
 
     try {
-      const query = new Query(language, config.symbolQuery);
+      tree = parser.parse(content);
+      if (!tree) return [];
+
+      query = new Query(language, config.symbolQuery);
       const captures = query.captures(tree.rootNode);
 
       for (const capture of captures) {
-        // Skip predicate-internal captures (e.g. @_kw, @_fn, @_cmd, @_method)
         if (capture.name.startsWith('_')) continue;
 
         symbols.push({
@@ -402,55 +465,345 @@ export class CodeParser {
           endLine: capture.node.endPosition.row + 1,
         });
       }
-      query.delete();
     } catch (e: any) {
       debugLog(`[Parser] Symbol query failed for ${filePath}: ${e.message}`);
+    } finally {
+      if (query) query.delete();
+      if (tree) tree.delete();
+      parser.delete();
     }
-
-    if (tree) tree.delete();
     return symbols;
   }
 
-  async parseImports(filePath: string): Promise<string[]> {
+  private parseSymbolsWithRegex(ext: string, content: string): SymbolInfo[] {
+    const symbols: SymbolInfo[] = [];
+    const addSymbol = (name: string | undefined, type: SymbolInfo['type'], index: number | undefined) => {
+      if (!name || index === undefined) return;
+      const line = content.slice(0, index).split('\n').length;
+      if (symbols.some(symbol => symbol.name === name && symbol.type === type && symbol.startLine === line)) return;
+
+      symbols.push({
+        name,
+        type,
+        startLine: line,
+        endLine: line,
+      });
+    };
+
+    switch (ext) {
+      case '.ts':
+      case '.tsx':
+      case '.js':
+      case '.jsx': {
+        for (const match of content.matchAll(/\bfunction\s+([A-Za-z_$][\w$]*)\s*\(/g)) {
+          addSymbol(match[1], 'function', match.index);
+        }
+        for (const match of content.matchAll(/\bclass\s+([A-Za-z_$][\w$]*)\b/g)) {
+          addSymbol(match[1], 'class', match.index);
+        }
+        for (const match of content.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/g)) {
+          addSymbol(match[1], 'variable', match.index);
+        }
+        return symbols;
+      }
+
+      default:
+        return symbols;
+    }
+  }
+
+  async parseImports(filePath: string): Promise<ImportInfo[]> {
     const ext = path.extname(filePath);
+    const content = await fs.readFile(filePath, 'utf8');
+
+    const regexImports = this.parseImportsWithRegex(ext, content);
+    if (regexImports) return regexImports;
+
     const config = LANGUAGE_CONFIG[ext];
     if (!config || !config.importQuery) return [];
 
-    await this.ensureInit();
     const language = await this.loadLanguage(ext);
-    if (!language || !this.parser) return [];
+    if (!language) return [];
 
-    const content = await fs.readFile(filePath, 'utf8');
-    this.parser.setLanguage(language);
-    const tree = this.parser.parse(content);
-    if (!tree) return [];
+    const parser = new Parser();
+    parser.setLanguage(language);
 
-    const imports: string[] = [];
+    let tree: any = null;
+    let query: Query | null = null;
+    const imports: ImportInfo[] = [];
 
     try {
-      const query = new Query(language, config.importQuery);
+      tree = parser.parse(content);
+      if (!tree) return [];
+
+      query = new Query(language, config.importQuery);
       const captures = query.captures(tree.rootNode);
 
       for (const capture of captures) {
-        // Skip predicate-internal captures (e.g. @_fn, @_kw, @_cmd, @_method)
-        if (capture.name.startsWith('_')) continue;
-
         let source = capture.node.text;
+        let isTypeOnly = false;
 
-        // ── Post-processing per language ──────────────────────────────────
+        // Resilient filtering: check if parent node looks like an import/export
+        let parent = capture.node.parent;
+        let isImport = false;
+        let depth = 0;
+        while (parent && depth < 10) {
+          const type = parent.type.toLowerCase();
+          if (type.includes('import') || type.includes('export') || type.includes('use') || type.includes('require')) {
+            isImport = true;
+            if (parent.text.includes('type ')) isTypeOnly = true;
+            break;
+          }
+          parent = parent.parent;
+          depth++;
+        }
+
+        if (!isImport) continue;
+
         source = this.normalizeImport(ext, source);
 
-        if (source && !imports.includes(source)) {
-          imports.push(source);
+        if (source && !imports.some(i => i.source === source)) {
+          imports.push({
+            source,
+            type: isTypeOnly ? 'type' : 'value'
+          });
         }
       }
-      query.delete();
     } catch (e: any) {
       debugLog(`[Parser] Import query failed for ${filePath}: ${e.message}`);
+    } finally {
+      if (query) query.delete();
+      if (tree) tree.delete();
+      parser.delete();
     }
-
-    if (tree) tree.delete();
     return imports;
+  }
+
+  private parseImportsWithRegex(ext: string, content: string): ImportInfo[] | null {
+    const imports: ImportInfo[] = [];
+    const addImport = (
+      raw: string | undefined,
+      type: 'value' | 'type' = 'value',
+      resolution: 'static' | 'dynamic' = 'static'
+    ) => {
+      if (!raw) return;
+
+      const source = this.normalizeImport(ext, raw.trim());
+      if (!source) return;
+
+      const existing = imports.find(i => i.source === source);
+      if (existing) {
+        if (type === 'value') existing.type = 'value';
+        if (resolution === 'dynamic' || existing.resolution === 'dynamic') {
+          existing.resolution = 'dynamic';
+        }
+        return;
+      }
+
+      imports.push({ source, type, resolution });
+    };
+
+    switch (ext) {
+      case '.ts':
+      case '.tsx':
+      case '.js':
+      case '.jsx':
+      case '.vue':
+      case '.svelte': {
+        const constStrings = new Map<string, string>();
+        for (const match of content.matchAll(/\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*(['"])([^'"\\]*(?:\\.[^'"\\]*)*)\2\s*;?/g)) {
+          constStrings.set(match[1], match[3]);
+        }
+
+        for (const match of content.matchAll(/\bimport\s+type\b[\s\S]*?\bfrom\s*["'`]([^"'`]+)["'`]/g)) {
+          addImport(match[1], 'type');
+        }
+        for (const match of content.matchAll(/\bimport\s+(?!type\b)[\s\S]*?\bfrom\s*["'`]([^"'`]+)["'`]/g)) {
+          addImport(match[1]);
+        }
+        for (const match of content.matchAll(/\bimport\s*["'`]([^"'`]+)["'`]/g)) {
+          addImport(match[1]);
+        }
+        for (const match of content.matchAll(/\bexport\s+(type\s+)?(?:\*|\{[\s\S]*?\})\s+from\s*["'`]([^"'`]+)["'`]/g)) {
+          addImport(match[2], match[1] ? 'type' : 'value');
+        }
+        for (const match of content.matchAll(/(?:^|[^\w])import\(\s*["'`]([^"'`$]+)["'`]\s*\)/gm)) {
+          addImport(match[1]);
+        }
+        for (const match of content.matchAll(/(?:^|[^\w])import\(\s*`([^`$]*(?:\$\{[^}]+\}[^`$]*)+)`\s*\)/gm)) {
+          const resolved = match[1].replace(/\$\{\s*([A-Za-z_$][\w$]*)\s*\}/g, (_, name: string) => {
+            return constStrings.get(name) ?? `__UNRESOLVED__${name}__`;
+          });
+
+          if (!resolved.includes('__UNRESOLVED__')) {
+            addImport(resolved, 'value', 'dynamic');
+          }
+        }
+        for (const match of content.matchAll(/(?:^|[^\w])require\(\s*["'`]([^"'`$]+)["'`]\s*\)/gm)) {
+          addImport(match[1]);
+        }
+        return imports;
+      }
+
+      case '.py': {
+        for (const match of content.matchAll(/^\s*import\s+([^\n#]+)/gm)) {
+          const modules = match[1].split(',').map(part => part.trim()).filter(Boolean);
+          for (const mod of modules) {
+            addImport(mod.split(/\s+as\s+/i)[0]);
+          }
+        }
+        for (const match of content.matchAll(/^\s*from\s+([^\s]+)\s+import\s+([^\n#]+)/gm)) {
+          const moduleName = match[1].trim();
+          const names = match[2].split(',').map(part => part.trim()).filter(Boolean);
+          for (const name of names) {
+            const bareName = name.split(/\s+as\s+/i)[0].trim();
+            if (!bareName || bareName === '*') {
+              addImport(moduleName);
+            } else {
+              addImport(`${moduleName}.${bareName}`);
+            }
+          }
+        }
+        return imports;
+      }
+
+      case '.go': {
+        for (const match of content.matchAll(/^\s*import\s+(?:[\w.]+\s+)?["'`]([^"'`]+)["'`]/gm)) {
+          addImport(match[1]);
+        }
+        for (const block of content.matchAll(/^\s*import\s*\(([\s\S]*?)\)/gm)) {
+          for (const match of block[1].matchAll(/["'`]([^"'`]+)["'`]/g)) {
+            addImport(match[1]);
+          }
+        }
+        return imports;
+      }
+
+      case '.rs': {
+        for (const match of content.matchAll(/^\s*use\s+([^;]+);/gm)) {
+          addImport(match[1]);
+        }
+        return imports;
+      }
+
+      case '.java':
+      case '.kt':
+      case '.scala': {
+        for (const match of content.matchAll(/^\s*import\s+([^;\n]+);?/gm)) {
+          addImport(match[1]);
+        }
+        return imports;
+      }
+
+      case '.rb': {
+        for (const match of content.matchAll(/\brequire_relative\s+["'`]([^"'`]+)["'`]/g)) {
+          addImport(match[1]);
+        }
+        for (const match of content.matchAll(/\brequire\s+(?:\(\s*)?["'`]([^"'`]+)["'`](?:\s*\))?/g)) {
+          addImport(match[1]);
+        }
+        return imports;
+      }
+
+      case '.php': {
+        for (const match of content.matchAll(/^\s*use\s+([^;]+);/gm)) {
+          addImport(match[1].split(/\s+as\s+/i)[0]);
+        }
+        return imports;
+      }
+
+      case '.c':
+      case '.cpp':
+      case '.m': {
+        for (const match of content.matchAll(/^\s*#(?:include|import)\s*[<"]([^>"]+)[>"]/gm)) {
+          addImport(match[1]);
+        }
+        return imports;
+      }
+
+      case '.cs': {
+        for (const match of content.matchAll(/^\s*using\s+([^;]+);/gm)) {
+          addImport(match[1]);
+        }
+        return imports;
+      }
+
+      case '.swift': {
+        for (const match of content.matchAll(/^\s*import\s+([A-Za-z_][\w.]*)/gm)) {
+          addImport(match[1]);
+        }
+        return imports;
+      }
+
+      case '.lua': {
+        for (const match of content.matchAll(/\brequire\s*\(\s*["'`]([^"'`]+)["'`]\s*\)/g)) {
+          addImport(match[1]);
+        }
+        for (const match of content.matchAll(/\brequire\s+["'`]([^"'`]+)["'`]/g)) {
+          addImport(match[1]);
+        }
+        return imports;
+      }
+
+      case '.dart': {
+        for (const match of content.matchAll(/\bimport\s+["'`]([^"'`]+)["'`]/g)) {
+          addImport(match[1]);
+        }
+        return imports;
+      }
+
+      case '.ex': {
+        for (const match of content.matchAll(/^\s*(?:alias|import|use)\s+([A-Za-z_][\w.]*)/gm)) {
+          addImport(match[1]);
+        }
+        return imports;
+      }
+
+      case '.zig': {
+        for (const match of content.matchAll(/@import\(\s*["'`]([^"'`]+)["'`]\s*\)/g)) {
+          addImport(match[1]);
+        }
+        return imports;
+      }
+
+      case '.sh': {
+        for (const match of content.matchAll(/^\s*(?:source|\.)\s+([^\s#;]+)/gm)) {
+          addImport(match[1]);
+        }
+        return imports;
+      }
+
+      case '.ps1': {
+        for (const match of content.matchAll(/^\s*\.\s+([^\s#;]+)/gm)) {
+          addImport(match[1]);
+        }
+        for (const match of content.matchAll(/^\s*Import-Module\s+([^\s#;]+)/gim)) {
+          addImport(match[1]);
+        }
+        return imports;
+      }
+
+      case '.jl': {
+        for (const match of content.matchAll(/\binclude\(\s*["'`]([^"'`]+)["'`]\s*\)/g)) {
+          addImport(match[1]);
+        }
+        for (const match of content.matchAll(/^\s*(?:using|import)\s+([^\n]+)/gm)) {
+          addImport(match[1]);
+        }
+        return imports;
+      }
+
+      case '.v':
+      case '.sv': {
+        for (const match of content.matchAll(/^\s*`include\s+["'`]([^"'`]+)["'`]/gm)) {
+          addImport(match[1]);
+        }
+        return imports;
+      }
+
+      default:
+        return null;
+    }
   }
 
   /**
@@ -506,6 +859,15 @@ export class CodeParser {
       case '.php':
         // PHP: backslashes to forward slashes for path-like resolution
         source = source.replace(/\\/g, '/');
+        break;
+      case '.swift':
+        source = source.replace(/_/g, '/');
+        break;
+      case '.lua':
+        source = source.replace(/\./g, '/');
+        break;
+      case '.ex':
+        source = source.replace(/\./g, '/').toLowerCase();
         break;
       default:
         break;

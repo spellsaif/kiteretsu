@@ -1,0 +1,8 @@
+{
+  "trigger_file": "test-fixtures/svelte/canary/core/utils.svelte",
+  "expected_blast_radius": [
+    "test-fixtures/svelte/canary/d1.svelte"
+  ],
+  "expected_NOT_in_blast_radius": [],
+  "notes": "Canary test for svelte"
+}

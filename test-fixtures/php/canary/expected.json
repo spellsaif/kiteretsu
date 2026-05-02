@@ -1,0 +1,8 @@
+{
+  "trigger_file": "test-fixtures/php/canary/core/utils.php",
+  "expected_blast_radius": [
+    "test-fixtures/php/canary/d1.php"
+  ],
+  "expected_NOT_in_blast_radius": [],
+  "notes": "Canary test for php"
+}

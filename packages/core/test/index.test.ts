@@ -16,7 +16,14 @@ describe('Kiteretsu Intelligence Layer', () => {
 
   afterEach(async () => {
     await kiteretsu.destroy();
-    await fs.remove(TEST_ROOT);
+    for (let i = 0; i < 5; i++) {
+      try {
+        await fs.remove(TEST_ROOT);
+        break;
+      } catch {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
   });
 
   it('should initialize a database in the root directory', async () => {
@@ -51,6 +58,21 @@ describe('Kiteretsu Intelligence Layer', () => {
     const blastRadius = (await analyzer.getBlastRadius(fileA)).map(normalize);
     expect(blastRadius).toContain(fileB);
   });
+
+  it('should flag template-literal dynamic imports as unresolved', async () => {
+    const pluginFile = normalize(path.join(TEST_ROOT, 'plugin.ts'));
+    const loaderFile = normalize(path.join(TEST_ROOT, 'loader.ts'));
+
+    await fs.writeFile(pluginFile, 'export const run = () => "ok";');
+    await fs.writeFile(loaderFile, 'const pluginName = "plugin";\nexport const load = async () => import(`./${pluginName}`);');
+
+    await kiteretsu.indexFile(pluginFile);
+    await kiteretsu.indexFile(loaderFile);
+
+    const analyzer = await kiteretsu.getAnalyzer();
+    const blastRadius = (await analyzer.getBlastRadius(pluginFile)).map(normalizeBlastEntry);
+    expect(blastRadius).toContain(`UNRESOLVABLE: ${loaderFile}`);
+  });
 });
 
 function normalize(p: string) {
@@ -59,4 +81,11 @@ function normalize(p: string) {
     resolved = resolved[0].toLowerCase() + resolved.slice(1);
   }
   return resolved;
+}
+
+function normalizeBlastEntry(entry: string) {
+  if (entry.startsWith('UNRESOLVABLE: ')) {
+    return `UNRESOLVABLE: ${normalize(entry.slice('UNRESOLVABLE: '.length))}`;
+  }
+  return normalize(entry);
 }

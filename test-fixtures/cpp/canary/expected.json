@@ -1,0 +1,8 @@
+{
+  "trigger_file": "test-fixtures/cpp/canary/core/utils.h",
+  "expected_blast_radius": [
+    "test-fixtures/cpp/canary/d1.cpp"
+  ],
+  "expected_NOT_in_blast_radius": [],
+  "notes": "Canary test for cpp"
+}

@@ -1,0 +1,8 @@
+{
+  "trigger_file": "test-fixtures/julia/canary/core/utils.jl",
+  "expected_blast_radius": [
+    "test-fixtures/julia/canary/d1.jl"
+  ],
+  "expected_NOT_in_blast_radius": [],
+  "notes": "Canary test for julia"
+}

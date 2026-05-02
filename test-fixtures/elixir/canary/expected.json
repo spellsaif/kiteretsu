@@ -1,0 +1,8 @@
+{
+  "trigger_file": "test-fixtures/elixir/canary/core/utils.ex",
+  "expected_blast_radius": [
+    "test-fixtures/elixir/canary/d1.ex"
+  ],
+  "expected_NOT_in_blast_radius": [],
+  "notes": "Canary test for elixir"
+}
