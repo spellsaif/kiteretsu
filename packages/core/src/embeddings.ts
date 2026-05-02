@@ -20,9 +20,22 @@ export class EmbeddingEngine {
   }
 
   async generateEmbedding(text: string): Promise<number[]> {
+    const results = await this.generateEmbeddings([text]);
+    return results[0];
+  }
+
+  async generateEmbeddings(texts: string[]): Promise<number[][]> {
+    if (texts.length === 0) return [];
     const extractor = await this.getExtractor();
-    const output = await this.limit(() => extractor(text, { pooling: 'mean', normalize: true }));
-    return Array.from(output.data);
+    const output = await this.limit(() => extractor(texts, { pooling: 'mean', normalize: true }));
+    
+    // Convert the flat data into an array of vectors
+    const vectorSize = output.data.length / texts.length;
+    const results: number[][] = [];
+    for (let i = 0; i < texts.length; i++) {
+      results.push(Array.from(output.data.slice(i * vectorSize, (i + 1) * vectorSize)));
+    }
+    return results;
   }
 
   /**
