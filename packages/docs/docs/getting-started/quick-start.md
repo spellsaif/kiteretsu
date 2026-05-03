@@ -43,7 +43,7 @@ Kiteretsu is designed to work with the tools you already use. **Choose your agen
 - [**Google Gemini**](../agents/gemini)
 
 #### ⚙️ Advanced Integrations
-- [**Model Context Protocol (MCP)**](../mcp-server/introduction)
+- [**Model Context Protocol (MCP)**](../mcp-server)
 - [**Git Self-Healing**](../agents/git)
 - [**All 15+ Supported Agents**](../agents/overview)
 

@@ -42,6 +42,11 @@ const config: Config = {
     ],
   ],
 
+  themes: ['@docusaurus/theme-mermaid'],
+  markdown: {
+    mermaid: true,
+  },
+
   themeConfig: {
     colorMode: {
       defaultMode: 'dark',
@@ -75,11 +80,11 @@ const config: Config = {
           items: [
             {
               label: 'Getting Started',
-              to: '/docs/intro',
+              to: '/docs/getting-started/installation',
             },
             {
-              label: 'Interactive UI',
-              to: '/docs/commands/ui',
+              label: 'Configuration',
+              to: '/docs/configuration',
             },
           ],
         },
@@ -97,6 +102,10 @@ const config: Config = {
             {
               label: 'Cursor',
               to: '/docs/agents/cursor',
+            },
+            {
+              label: 'MCP Server',
+              to: '/docs/mcp-server',
             },
           ],
         },

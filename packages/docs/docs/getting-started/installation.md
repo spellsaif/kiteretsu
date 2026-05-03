@@ -28,9 +28,9 @@ kiteretsu init
 ```
 
 This will:
-1. Create a `.kiteretsu` directory for internal metadata.
-2. Initialize a local SQLite database for codebase memory.
-3. Generate a default `kiteretsu.config.json`.
+1. Create a `.kiteretsu` directory for internal metadata and database.
+2. Generate a **`kiteretsu.config.json`** in your project root for behavioral settings.
+3. Generate a **`.kiteretsuignore`** in your project root to manage indexing exclusions.
 
 ## Your First Index
 

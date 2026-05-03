@@ -27,4 +27,4 @@ When you use **Cursor Chat** or **Cursor Composer**:
 
 ## Using MCP with Cursor
 
-If you want an even tighter integration, you can also add Kiteretsu as an **MCP Server** in Cursor's settings. See the [MCP Guide](../mcp-server/introduction) for more details.
+If you want an even tighter integration, you can also add Kiteretsu as an **MCP Server** in Cursor's settings. See the [MCP Guide](../mcp-server) for more details.

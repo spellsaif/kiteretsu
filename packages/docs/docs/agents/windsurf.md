@@ -25,4 +25,4 @@ When you open a project in Windsurf:
 3.  **Cross-File Accuracy**: Because Cascade uses Kiteretsu's dependency graph, it is much less likely to make changes that break unrelated parts of your project.
 
 ## Pro Tip
-You can also use Kiteretsu's **MCP Server** with Windsurf for an even more direct integration. See the [MCP Guide](../mcp-server/introduction) for details.
+You can also use Kiteretsu's **MCP Server** with Windsurf for an even more direct integration. See the [MCP Guide](../mcp-server) for details.
