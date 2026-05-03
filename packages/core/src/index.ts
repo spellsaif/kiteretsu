@@ -63,10 +63,14 @@ export class Kiteretsu {
 
   get scanner(): Scanner {
     if (!this._scanner) {
-      const configPath = path.join(this.rootDir, '.kiteretsu', 'config.json');
+      const rootConfigPath = path.join(this.rootDir, 'kiteretsu.config.json');
+      const internalConfigPath = path.join(this.rootDir, '.kiteretsu', 'config.json');
+
       let scanOptions: { rootDir: string; include?: string[]; exclude?: string[] } = { rootDir: this.rootDir };
 
-      if (fs.existsSync(configPath)) {
+      const configPath = fs.existsSync(rootConfigPath) ? rootConfigPath : (fs.existsSync(internalConfigPath) ? internalConfigPath : null);
+
+      if (configPath) {
         try {
           const fileConfig = fs.readJsonSync(configPath);
           if (fileConfig.indexing) {
@@ -372,19 +376,36 @@ export class Kiteretsu {
     await this.populatePackageMap();
     await this.discoverRustCrates();
 
-    // Create default config if it doesn't exist
-    const configPath = path.join(this.rootDir, '.kiteretsu', 'config.json');
-    if (!fs.existsSync(configPath)) {
-      await fs.ensureDir(path.dirname(configPath));
-      const excludes = this.detectProjectExcludes();
-      await fs.writeJson(configPath, {
+    // Create standard root config if it doesn't exist
+    const rootConfigPath = path.join(this.rootDir, 'kiteretsu.config.json');
+    if (!fs.existsSync(rootConfigPath)) {
+      await fs.writeJson(rootConfigPath, {
         name: path.basename(this.rootDir),
         version: "1.0.0",
         indexing: {
-          include: ["**/*"],
-          exclude: excludes
+          maxFileSize: "10MB",
+          deepParseLimit: "500KB"
+        },
+        search: {
+          precision: "high",
+          provider: "transformers"
         }
       }, { spaces: 2 });
+    }
+
+    // Create .kiteretsuignore if it doesn't exist
+    const ignorePath = path.join(this.rootDir, '.kiteretsuignore');
+    if (!fs.existsSync(ignorePath)) {
+      const excludes = this.detectProjectExcludes();
+      const content = [
+        '# Kiteretsu Ignore File',
+        '# Standard glob patterns to exclude from indexing',
+        '',
+        ...excludes,
+        '',
+        '# Custom ignores below',
+      ].join('\n');
+      await fs.writeFile(ignorePath, content);
     }
   }
 
@@ -818,7 +839,8 @@ export class Kiteretsu {
         const rel = r.startsWith('UNRESOLVABLE: ')
           ? `UNRESOLVABLE: ${path.relative(this.rootDir, r.slice('UNRESOLVABLE: '.length)).replace(/\\/g, '/')}`
           : path.relative(this.rootDir, r).replace(/\\/g, '/');
-        if (!topCandidates.some(tc => tc.path === rel)) blastRadiusFiles.add(rel);
+        // Always add to blast radius for visibility, even if it's in top candidates
+        blastRadiusFiles.add(rel);
       });
 
       const tests = await analyzer.getRelatedTests(fullPath);

@@ -126,13 +126,13 @@ program
         ].join('\n'),
         { padding: 1, margin: 1, borderStyle: 'round', borderColor: 'green' }
       ));
-      await getKiteretsu().destroy();
-      return;
+      // Allow native worker threads (Transformers.js/ONNX/OpenSSL) a moment to finalize
+      // before the process hard-exits, which prevents 'Zone' OOM crashes on Windows.
+      setTimeout(() => process.exit(0), 300);
     } catch (error: any) {
       progressBar.stop();
       console.error(chalk.red('\nIndexing failed: ' + error.message));
-      process.exitCode = 1;
-      return;
+      setTimeout(() => process.exit(1), 300);
     }
   });
 

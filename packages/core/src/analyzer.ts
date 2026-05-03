@@ -30,7 +30,7 @@ export class CodeAnalyzer {
     }
     
     let relativePath = path.relative(this.rootDir, fullPath).replace(/\\/g, '/');
-    if (relativePath.startsWith('./')) relativePath = relativePath.slice(2);
+    relativePath = relativePath.replace(/^\.?\//, ''); // Strip leading ./ or /
     
     const knex = this.db.getKnex();
     const blastRadius = new Set<string>();

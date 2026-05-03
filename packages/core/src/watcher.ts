@@ -21,8 +21,10 @@ export class CodeWatcher {
     if (CodeWatcher.isStarted) return;
     CodeWatcher.isStarted = true;
 
-    return new Promise<void>((resolve, reject) => {
+    return new Promise<void>(async (resolve, reject) => {
       const absoluteRoot = path.resolve(rootDir).replace(/\\/g, '/');
+      const excludes = await this.kiteretsu.scanner.getExcludes();
+
       console.log('\n' + chalk.bold.cyan('👀 Kiteretsu Intelligence Watcher Active'));
       console.log(chalk.gray(`  Monitoring: ${absoluteRoot}`));
       console.log(chalk.gray('  Mode: Atomic Polling (Ultra-Reliable)\n'));
@@ -30,10 +32,7 @@ export class CodeWatcher {
       this.watcher = chokidar.watch('.', {
         cwd: absoluteRoot,
         ignored: [
-          '**/node_modules/**',
-          '**/dist/**',
-          '**/.git/**',
-          '**/.kiteretsu/**',
+          ...excludes,
           /(^|[/\\])\../
         ],
         persistent: true,
