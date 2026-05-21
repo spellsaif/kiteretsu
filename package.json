@@ -9,9 +9,7 @@
     "build": "turbo run build",
     "test": "turbo run test",
     "cli": "pnpm --filter kiteretsu start",
-    "mcp": "pnpm --filter @kiteretsu/mcp-server start",
-    "server": "pnpm --filter @kiteretsu/server dev",
-    "dashboard": "pnpm --filter dashboard dev"
+    "mcp": "pnpm --filter @kiteretsu/mcp-server start"
   },
   "keywords": [
     "ai",
