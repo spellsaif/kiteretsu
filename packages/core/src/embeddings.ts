@@ -1,4 +1,3 @@
-import { pipeline } from '@xenova/transformers';
 import path from 'path';
 import fs from 'fs-extra';
 import pLimit from 'p-limit';
@@ -13,7 +12,16 @@ export class EmbeddingEngine {
 
   private async getExtractor() {
     if (!this.initPromise) {
-      this.initPromise = pipeline('feature-extraction', this.modelName);
+      this.initPromise = (async () => {
+        try {
+          const { pipeline, env } = await import('@xenova/transformers');
+          // Configure ONNX backend options to be extremely safe/single-threaded and avoid Zone allocations
+          env.backends.onnx.wasm.numThreads = 1;
+          return pipeline('feature-extraction', this.modelName);
+        } catch (e: any) {
+          throw new Error(`Failed to load transformers: ${e.message}`);
+        }
+      })();
     }
     this.extractor = await this.initPromise;
     return this.extractor;
@@ -27,8 +35,8 @@ export class EmbeddingEngine {
   async generateEmbeddings(texts: string[]): Promise<number[][]> {
     if (texts.length === 0) return [];
 
-    // Fast mock fallback for testing environment to prevent network hanging/downloads
-    if (process.env.NODE_ENV === 'test' || process.env.VITEST) {
+    // Fast mock fallback for testing environment or if explicitly disabled to prevent network hanging/downloads
+    if (process.env.NODE_ENV === 'test' || process.env.VITEST || process.env.KITERETSU_DISABLE_EMBEDDINGS === '1') {
       const mockVector = new Array(384).fill(0).map(() => Math.random() - 0.5);
       return texts.map(() => mockVector);
     }
