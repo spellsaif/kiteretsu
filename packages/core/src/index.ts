@@ -6,6 +6,7 @@ import path from 'path';
 import fs from 'fs-extra';
 import pLimit from 'p-limit';
 import { EmbeddingEngine } from './embeddings.js';
+import { Knex } from 'knex';
 
 export interface KiteretsuConfig {
   rootDir: string;
@@ -113,56 +114,55 @@ export class Kiteretsu {
     }
 
     const relativePath = path.relative(this.rootDir, fullPath).replace(/\\/g, '/');
-    const file = await knex('files').where({ path: relativePath }).first();
-    if (!file) return;
-    const fileId = file.id;
 
-    // 1. Parse symbols & imports
+    // Add to file system cache dynamically so resolving works immediately
+    this.fileSystemCache.add(fullPath);
+
+    const hash = await this.scanner.getFileHash(fullPath);
+
+    // Fast, separate file registration/lookup outside broad transactions to minimize lock contention
+    let fileId: number;
+    try {
+      let file = await knex('files').where({ path: relativePath }).first();
+      if (!file) {
+        const [insertedId] = await knex('files').insert({
+          path: relativePath,
+          hash: hash,
+          stale: true,
+          last_indexed: knex.fn.now()
+        });
+        fileId = insertedId;
+      } else {
+        fileId = file.id;
+      }
+    } catch (e: any) {
+      // Handle potential race condition of concurrent inserts
+      const file = await knex('files').where({ path: relativePath }).first();
+      if (file) {
+        fileId = file.id;
+      } else {
+        throw e;
+      }
+    }
+
+    // 1. Parse symbols & imports (CPU bound, fully outside transaction)
     const parser = await this.getParser();
     const { symbols, imports: importInfos } = await parser.parseCode(fullPath);
 
-    // 2. Generate and store Technical Gist
+    // 2. Generate Technical Gist
     const gist = this.generateTechnicalGist(path.basename(fullPath), symbols, importInfos);
-    await knex('files').where({ id: fileId }).update({
-      summary: gist
-    });
 
-    // 3. Generate Embedding using the Gist
+    // 3. Generate Embedding using the Gist (Slow CPU/ONNX task, fully outside transaction)
+    let vectorBuffer: Buffer | null = null;
     try {
       const vector = await this.getEmbeddings().generateEmbedding(gist);
-      const vectorBuffer = Buffer.from(new Float32Array(vector).buffer);
-      await knex('files').where({ id: fileId }).update({
-        embedding: vectorBuffer
-      });
+      vectorBuffer = Buffer.from(new Float32Array(vector).buffer);
     } catch (e: any) {
       const debugLog = path.resolve(this.rootDir, '.kiteretsu', 'debug.log');
       try { fs.appendFileSync(debugLog, `[Embeddings] Failed for ${path.basename(fullPath)}: ${e.message}\n`); } catch { }
     }
 
-    // 4. Update Symbols
-    await knex('symbols').where({ file_id: fileId }).delete();
-
-    if (symbols.length > 0) {
-      const symbolRecords = symbols.map(sym => ({
-        name: sym.name,
-        type: sym.type,
-        file_id: fileId,
-        start_line: sym.startLine,
-        end_line: sym.endLine
-      }));
-      // Batch insert in chunks
-      const chunkSize = 100;
-      for (let i = 0; i < symbolRecords.length; i += chunkSize) {
-        await knex('symbols').insert(symbolRecords.slice(i, i + chunkSize));
-      }
-    }
-
-    // Imports
-    await knex('graph_edges')
-      .where({ source_type: 'file', source_id: fileId })
-      .whereIn('relation', ['imports', 'imports:type', 'imports:dynamic'])
-      .delete();
-
+    // 4. Resolve imports to database records (fully outside transaction)
     const fileExt = path.extname(fullPath);
     const edgeRecords: any[] = [];
     const seenEdges = new Set<string>();
@@ -181,8 +181,8 @@ export class Kiteretsu {
       if (['.ts', '.tsx', '.js', '.jsx'].includes(fileExt)) {
         // ── JS/TS Resolution ──
         const source = sourceRaw.replace(/\.(js|jsx|ts|tsx)$/, '');
-        const resolved = this.resolveImportToPath(path.dirname(fullPath), source) ||
-          this.resolveImportToPath(path.dirname(fullPath), sourceRaw);
+        const resolved = await this.resolveImportToPath(path.dirname(fullPath), source) ||
+          await this.resolveImportToPath(path.dirname(fullPath), sourceRaw);
 
         if (resolved) {
           potentialTargets.push(resolved);
@@ -201,20 +201,20 @@ export class Kiteretsu {
           }
           const packageDir = this.packageMap.get(packageName);
           if (packageDir) {
-            const resolvedPkg = this.resolveImportToPath(packageDir, subPath || 'src');
+            const resolvedPkg = await this.resolveImportToPath(packageDir, subPath || 'src');
             if (resolvedPkg) potentialTargets.push(resolvedPkg);
           }
           // Fallback to root-relative
           if (potentialTargets.length === 0) {
-            const resolvedRoot = this.resolveImportToPath(this.rootDir, source);
+            const resolvedRoot = await this.resolveImportToPath(this.rootDir, source);
             if (resolvedRoot) potentialTargets.push(resolvedRoot);
           }
         }
       } else if (fileExt === '.py') {
         // ── Python Resolution ──
-        let resolved = this.resolveImportToPath(path.dirname(fullPath), sourceRaw);
+        let resolved = await this.resolveImportToPath(path.dirname(fullPath), sourceRaw);
         if (!resolved) {
-          resolved = this.resolveImportToPath(this.rootDir, sourceRaw);
+          resolved = await this.resolveImportToPath(this.rootDir, sourceRaw);
         }
         if (resolved) potentialTargets.push(resolved);
       } else if (fileExt === '.rs') {
@@ -223,7 +223,7 @@ export class Kiteretsu {
         const rustTargets: Array<{ baseDir: string; relativePath: string }> = [];
 
         if (sourceRaw.startsWith('crate')) {
-          const crateRoot = this.findRustCrateRoot(fullPath);
+          const crateRoot = await this.findRustCrateRoot(fullPath);
           if (crateRoot) {
             rustTargets.push({ baseDir: crateRoot, relativePath: rustPath.replace(/^crate/, 'src') });
           }
@@ -237,21 +237,21 @@ export class Kiteretsu {
         }
 
         for (const target of rustTargets) {
-          const resolved = this.resolveImportToPath(target.baseDir, target.relativePath);
+          const resolved = await this.resolveImportToPath(target.baseDir, target.relativePath);
           if (resolved) potentialTargets.push(resolved);
         }
       } else if (fileExt === '.go') {
         // ── Go Resolution ──
         let localPath = sourceRaw;
-        const goMod = this.getGoModuleName();
+        const goMod = await this.getGoModuleName();
         if (goMod && sourceRaw.startsWith(goMod)) {
           localPath = sourceRaw.slice(goMod.length).replace(/^\//, '');
         }
 
         const goBaseDir = localPath.startsWith('.') ? path.dirname(fullPath) : this.rootDir;
-        const resolvedDir = this.resolveImportToPath(goBaseDir, localPath);
-        if (resolvedDir && fs.existsSync(resolvedDir) && fs.statSync(resolvedDir).isDirectory()) {
-          const files = fs.readdirSync(resolvedDir);
+        const resolvedDir = await this.resolveImportToPath(goBaseDir, localPath);
+        if (resolvedDir && await fs.pathExists(resolvedDir) && (await fs.stat(resolvedDir)).isDirectory()) {
+          const files = await fs.readdir(resolvedDir);
           for (const f of files) {
             if (f.endsWith('.go')) potentialTargets.push(path.join(resolvedDir, f));
           }
@@ -259,8 +259,8 @@ export class Kiteretsu {
           potentialTargets.push(resolvedDir);
         }
       } else {
-        const resolved = this.resolveImportToPath(path.dirname(fullPath), sourceRaw) ||
-          this.resolveImportToPath(this.rootDir, sourceRaw);
+        const resolved = await this.resolveImportToPath(path.dirname(fullPath), sourceRaw) ||
+          await this.resolveImportToPath(this.rootDir, sourceRaw);
         if (resolved) potentialTargets.push(resolved);
       }
 
@@ -295,12 +295,48 @@ export class Kiteretsu {
       }
     }
 
-    if (edgeRecords.length > 0) {
-      const chunkSize = 100;
-      for (let i = 0; i < edgeRecords.length; i += chunkSize) {
-        await knex('graph_edges').insert(edgeRecords.slice(i, i + chunkSize));
+    // 5. Wrap only fast writing database queries in a transaction
+    await knex.transaction(async (trx) => {
+      const updateData: any = {
+        summary: gist,
+        hash: hash,
+        stale: false,
+        last_indexed: trx.fn.now()
+      };
+      if (vectorBuffer) {
+        updateData.embedding = vectorBuffer;
       }
-    }
+      await trx('files').where({ id: fileId }).update(updateData);
+
+      // Rewrite symbols
+      await trx('symbols').where({ file_id: fileId }).delete();
+      if (symbols.length > 0) {
+        const symbolRecords = symbols.map(sym => ({
+          name: sym.name,
+          type: sym.type,
+          file_id: fileId,
+          start_line: sym.startLine,
+          end_line: sym.endLine
+        }));
+        const chunkSize = 100;
+        for (let i = 0; i < symbolRecords.length; i += chunkSize) {
+          await trx('symbols').insert(symbolRecords.slice(i, i + chunkSize));
+        }
+      }
+
+      // Rewrite graph edges
+      await trx('graph_edges')
+        .where({ source_type: 'file', source_id: fileId })
+        .whereIn('relation', ['imports', 'imports:type', 'imports:dynamic'])
+        .delete();
+
+      if (edgeRecords.length > 0) {
+        const chunkSize = 100;
+        for (let i = 0; i < edgeRecords.length; i += chunkSize) {
+          await trx('graph_edges').insert(edgeRecords.slice(i, i + chunkSize));
+        }
+      }
+    });
   }
 
   async semanticSearch(query: string, limit: number = 10): Promise<Array<{ path: string; distance: number }>> {
@@ -373,12 +409,35 @@ export class Kiteretsu {
 
   async init() {
     await this.db.initialize();
+
+    // Asynchronously initialize scanner here to avoid blocking startup
+    const rootConfigPath = path.join(this.rootDir, 'kiteretsu.config.json');
+    const internalConfigPath = path.join(this.rootDir, '.kiteretsu', 'config.json');
+
+    let scanOptions: { rootDir: string; include?: string[]; exclude?: string[] } = { rootDir: this.rootDir };
+    let configPath: string | null = null;
+    if (await fs.pathExists(rootConfigPath)) {
+      configPath = rootConfigPath;
+    } else if (await fs.pathExists(internalConfigPath)) {
+      configPath = internalConfigPath;
+    }
+
+    if (configPath) {
+      try {
+        const fileConfig = await fs.readJson(configPath);
+        if (fileConfig.indexing) {
+          scanOptions.include = fileConfig.indexing.include;
+          scanOptions.exclude = fileConfig.indexing.exclude;
+        }
+      } catch (e: any) { /* use defaults */ }
+    }
+    this._scanner = new Scanner(scanOptions);
+
     await this.populatePackageMap();
     await this.discoverRustCrates();
 
     // Create standard root config if it doesn't exist
-    const rootConfigPath = path.join(this.rootDir, 'kiteretsu.config.json');
-    if (!fs.existsSync(rootConfigPath)) {
+    if (!(await fs.pathExists(rootConfigPath))) {
       await fs.writeJson(rootConfigPath, {
         name: path.basename(this.rootDir),
         version: "1.0.0",
@@ -395,8 +454,8 @@ export class Kiteretsu {
 
     // Create .kiteretsuignore if it doesn't exist
     const ignorePath = path.join(this.rootDir, '.kiteretsuignore');
-    if (!fs.existsSync(ignorePath)) {
-      const excludes = this.detectProjectExcludes();
+    if (!(await fs.pathExists(ignorePath))) {
+      const excludes = await this.detectProjectExcludes();
       const content = [
         '# Kiteretsu Ignore File',
         '# Standard glob patterns to exclude from indexing',
@@ -410,6 +469,7 @@ export class Kiteretsu {
   }
 
   async index(onProgress?: (current: number, total: number, message: string) => void): Promise<{ files: number; symbols: number; edges: number }> {
+    await this.db.initialize();
     await this.populatePackageMap();
     await this.discoverRustCrates();
 
@@ -497,12 +557,12 @@ export class Kiteretsu {
   private async populatePackageMap() {
     this.packageMap.clear();
     const packagesDir = path.join(this.rootDir, 'packages');
-    if (!fs.existsSync(packagesDir)) return;
+    if (!(await fs.pathExists(packagesDir))) return;
 
     const dirs = await fs.readdir(packagesDir);
     for (const dir of dirs) {
       const pkgPath = path.join(packagesDir, dir, 'package.json');
-      if (fs.existsSync(pkgPath)) {
+      if (await fs.pathExists(pkgPath)) {
         try {
           const pkg = await fs.readJson(pkgPath);
           if (pkg.name) {
@@ -514,7 +574,7 @@ export class Kiteretsu {
 
     // Also include root package
     const rootPkgPath = path.join(this.rootDir, 'package.json');
-    if (fs.existsSync(rootPkgPath)) {
+    if (await fs.pathExists(rootPkgPath)) {
       try {
         const pkg = await fs.readJson(rootPkgPath);
         if (pkg.name) {
@@ -544,10 +604,10 @@ export class Kiteretsu {
   }
 
   /** Finds the nearest directory containing Cargo.toml or src/ (Rust crate root) */
-  private findRustCrateRoot(filePath: string): string {
+  private async findRustCrateRoot(filePath: string): Promise<string> {
     let current = path.dirname(filePath);
     while (current.length >= this.rootDir.length) {
-      if (fs.existsSync(path.join(current, 'Cargo.toml')) || fs.existsSync(path.join(current, 'src'))) {
+      if (await fs.pathExists(path.join(current, 'Cargo.toml')) || await fs.pathExists(path.join(current, 'src'))) {
         return current;
       }
       const parent = path.dirname(current);
@@ -561,7 +621,7 @@ export class Kiteretsu {
    * A more robust resolution strategy that tries to find a file by stripping path segments.
    * Useful for Rust (crate::a::b -> src/a.rs) and Go (pkg/a/b -> pkg directory).
    */
-  private resolveImportToPath(baseDir: string, relativePath: string): string | null {
+  private async resolveImportToPath(baseDir: string, relativePath: string): Promise<string | null> {
     if (!relativePath) return null;
 
     // Handle dotted paths (Java, C#, Python, Kotlin, Scala)
@@ -574,11 +634,11 @@ export class Kiteretsu {
     let currentPath = path.resolve(baseDir, processedPath).replace(/\\/g, '/');
 
     // Try full path first (with extensions)
-    const exact = this.resolveFilePath(currentPath);
+    const exact = await this.resolveFilePath(currentPath);
     if (exact) return exact;
 
     // If it's a directory, return it
-    if (fs.existsSync(currentPath) && fs.statSync(currentPath).isDirectory()) {
+    if (await fs.pathExists(currentPath) && (await fs.stat(currentPath)).isDirectory()) {
       return currentPath;
     }
 
@@ -587,17 +647,17 @@ export class Kiteretsu {
     while (parts.length > 1) {
       parts.pop();
       const candidateBase = path.resolve(baseDir, parts.join('/')).replace(/\\/g, '/');
-      const found = this.resolveFilePath(candidateBase);
+      const found = await this.resolveFilePath(candidateBase);
       if (found) return found;
 
-      if (fs.existsSync(candidateBase) && fs.statSync(candidateBase).isDirectory()) {
+      if (await fs.pathExists(candidateBase) && (await fs.stat(candidateBase)).isDirectory()) {
         return candidateBase;
       }
     }
 
     // Last resort: search globally in rootDir if it's not a relative path
     if (!relativePath.startsWith('.')) {
-      const globalResolved = this.resolveFilePath(path.resolve(this.rootDir, processedPath).replace(/\\/g, '/'));
+      const globalResolved = await this.resolveFilePath(path.resolve(this.rootDir, processedPath).replace(/\\/g, '/'));
       if (globalResolved) return globalResolved;
     }
 
@@ -605,8 +665,12 @@ export class Kiteretsu {
   }
 
   /** Resolve a base path (without extension) to an actual file on disk. */
-  private resolveFilePath(targetBase: string): string | null {
+  private async resolveFilePath(targetBase: string): Promise<string | null> {
     if (this.fileSystemCache.has(targetBase)) {
+      return targetBase;
+    }
+    if (await fs.pathExists(targetBase)) {
+      this.fileSystemCache.add(targetBase);
       return targetBase;
     }
 
@@ -628,6 +692,10 @@ export class Kiteretsu {
         if (this.fileSystemCache.has(candidate)) {
           return candidate;
         }
+        if (await fs.pathExists(candidate)) {
+          this.fileSystemCache.add(candidate);
+          return candidate;
+        }
         // Language-specific directory entry points
         const dirCandidates = [
           path.join(base, 'index' + ext).replace(/\\/g, '/'),      // JS/TS
@@ -640,6 +708,10 @@ export class Kiteretsu {
           if (this.fileSystemCache.has(dc)) {
             return dc;
           }
+          if (await fs.pathExists(dc)) {
+            this.fileSystemCache.add(dc);
+            return dc;
+          }
         }
       }
     }
@@ -647,7 +719,7 @@ export class Kiteretsu {
   }
 
   /** Detect project type from marker files and return appropriate exclude patterns. */
-  private detectProjectExcludes(): string[] {
+  private async detectProjectExcludes(): Promise<string[]> {
     const base = [
       '**/.kiteretsu/**',
       '**/.git/**',
@@ -677,36 +749,36 @@ export class Kiteretsu {
     ];
 
     // JS/TS
-    if (fs.existsSync(path.join(this.rootDir, 'package.json'))) {
+    if (await fs.pathExists(path.join(this.rootDir, 'package.json'))) {
       base.push('**/web_modules/**');
     }
     // Rust
-    if (fs.existsSync(path.join(this.rootDir, 'Cargo.toml'))) {
+    if (await fs.pathExists(path.join(this.rootDir, 'Cargo.toml'))) {
       base.push('**/target/**');
     }
     // Python
-    if (fs.existsSync(path.join(this.rootDir, 'pyproject.toml')) ||
-      fs.existsSync(path.join(this.rootDir, 'requirements.txt')) ||
-      fs.existsSync(path.join(this.rootDir, 'setup.py'))) {
+    if (await fs.pathExists(path.join(this.rootDir, 'pyproject.toml')) ||
+      await fs.pathExists(path.join(this.rootDir, 'requirements.txt')) ||
+      await fs.pathExists(path.join(this.rootDir, 'setup.py'))) {
       base.push('**/__pycache__/**', '**/.venv/**', '**/venv/**',
         '**/*.pyc', '**/*.egg-info/**');
     }
     // Go
-    if (fs.existsSync(path.join(this.rootDir, 'go.mod'))) {
+    if (await fs.pathExists(path.join(this.rootDir, 'go.mod'))) {
       base.push('**/vendor/**');
     }
     // Java/Kotlin
-    if (fs.existsSync(path.join(this.rootDir, 'pom.xml')) ||
-      fs.existsSync(path.join(this.rootDir, 'build.gradle')) ||
-      fs.existsSync(path.join(this.rootDir, 'build.gradle.kts'))) {
+    if (await fs.pathExists(path.join(this.rootDir, 'pom.xml')) ||
+      await fs.pathExists(path.join(this.rootDir, 'build.gradle')) ||
+      await fs.pathExists(path.join(this.rootDir, 'build.gradle.kts'))) {
       base.push('**/target/**', '**/.gradle/**', '**/build/**');
     }
     // Swift
-    if (fs.existsSync(path.join(this.rootDir, 'Package.swift'))) {
+    if (await fs.pathExists(path.join(this.rootDir, 'Package.swift'))) {
       base.push('**/.build/**');
     }
     // Ruby
-    if (fs.existsSync(path.join(this.rootDir, 'Gemfile'))) {
+    if (await fs.pathExists(path.join(this.rootDir, 'Gemfile'))) {
       base.push('**/vendor/bundle/**');
     }
 
@@ -715,12 +787,12 @@ export class Kiteretsu {
 
   /** Read Go module name from go.mod (cached). */
   private _goModuleName: string | null | undefined = undefined;
-  private getGoModuleName(): string | null {
+  private async getGoModuleName(): Promise<string | null> {
     if (this._goModuleName !== undefined) return this._goModuleName;
     const goModPath = path.join(this.rootDir, 'go.mod');
-    if (fs.existsSync(goModPath)) {
+    if (await fs.pathExists(goModPath)) {
       try {
-        const content = fs.readFileSync(goModPath, 'utf8');
+        const content = await fs.readFile(goModPath, 'utf8');
         const match = content.match(/^module\s+(.+)$/m);
         this._goModuleName = match ? match[1].trim() : null;
       } catch { this._goModuleName = null; }
@@ -853,13 +925,43 @@ export class Kiteretsu {
       }
     });
 
+    // Heuristic BPE token budgeting
+    const budgetTokens = 8000;
+    let currentTokens = 0;
+    const readFirst: Array<{ path: string; summary: string }> = [];
+    const optionalRead: Array<{ path: string; summary: string }> = [];
+
+    for (const f of topCandidates) {
+      const fullPath = path.resolve(this.rootDir, f.path);
+      let charLength = 0;
+      try {
+        if (await fs.pathExists(fullPath)) {
+          const content = await fs.readFile(fullPath, 'utf8');
+          charLength = content.length;
+        } else {
+          charLength = (f.summary || "").length * 4;
+        }
+      } catch (e) {
+        charLength = (f.summary || "").length * 4;
+      }
+
+      const fileTokens = Math.ceil(charLength / 4);
+
+      if (readFirst.length === 0 || currentTokens + fileTokens <= budgetTokens) {
+        currentTokens += fileTokens;
+        readFirst.push({ path: f.path, summary: f.summary || "No summary" });
+      } else {
+        optionalRead.push({ path: f.path, summary: f.summary || "No summary" });
+      }
+    }
+
     return {
       task,
       strategy: `Context centered on ${topCandidates[0].path.split('/').pop()}`,
-      read_first: topCandidates.map(f => ({ path: f.path, summary: f.summary || "No summary" })),
+      read_first: readFirst,
       blast_radius: Array.from(blastRadiusFiles).slice(0, 10),
       tests_to_run: Array.from(testsToRun).slice(0, 5),
-      optional_read: [],
+      optional_read: optionalRead,
       rules: rules.map(r => `${r.name}: ${r.description}`),
       warnings: topCandidates.some(f => f.stale) ? ["Codebase index is stale. Run 'kiteretsu index' to refresh."] : []
     };
