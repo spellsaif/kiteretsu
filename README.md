@@ -120,17 +120,6 @@ pnpm cli record-task "refactored cart routing to hono" success --notes "Hono tra
 
 ---
 
-## 🖥️ Local Dashboard
-
-Visualize your dependency network, examine token budgets, and manage architectural rules directly from a local-first interface:
-
-```bash
-# Spin up the watcher, backend server, and open the interface
-pnpm cli ui
-```
-*Accessible locally at http://localhost:3000.*
-
----
 
 ## 🤖 Integration Protocol
 
