@@ -21,6 +21,8 @@ export class Database {
         afterCreate: (conn: any, cb: any) => {
           try {
             conn.loadExtension(getLoadablePath());
+            conn.pragma('journal_mode = WAL');
+            conn.pragma('synchronous = NORMAL');
             cb(null, conn);
           } catch (e: any) {
             cb(e, conn);
