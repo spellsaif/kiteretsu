@@ -105,7 +105,15 @@ export class Kiteretsu {
     return this.db;
   }
 
-  async indexFile(filePath: string): Promise<void> {
+  async indexFile(
+    filePath: string,
+    precomputed?: {
+      symbols: any[];
+      imports: any[];
+      gist: string;
+      embedding: Buffer | null;
+    }
+  ): Promise<void> {
     const knex = this.db.getKnex();
     // Normalize incoming path
     let fullPath = path.resolve(filePath).replace(/\\/g, '/');
@@ -146,20 +154,28 @@ export class Kiteretsu {
     }
 
     // 1. Parse symbols & imports (CPU bound, fully outside transaction)
-    const parser = await this.getParser();
-    const { symbols, imports: importInfos } = await parser.parseCode(fullPath);
+    let symbols = precomputed?.symbols;
+    let importInfos = precomputed?.imports;
+    if (!symbols || !importInfos) {
+      const parser = await this.getParser();
+      const parsed = await parser.parseCode(fullPath);
+      symbols = parsed.symbols;
+      importInfos = parsed.imports;
+    }
 
     // 2. Generate Technical Gist
-    const gist = this.generateTechnicalGist(path.basename(fullPath), symbols, importInfos);
+    const gist = precomputed?.gist || this.generateTechnicalGist(path.basename(fullPath), symbols, importInfos);
 
     // 3. Generate Embedding using the Gist (Slow CPU/ONNX task, fully outside transaction)
-    let vectorBuffer: Buffer | null = null;
-    try {
-      const vector = await this.getEmbeddings().generateEmbedding(gist);
-      vectorBuffer = Buffer.from(new Float32Array(vector).buffer);
-    } catch (e: any) {
-      const debugLog = path.resolve(this.rootDir, '.kiteretsu', 'debug.log');
-      try { fs.appendFileSync(debugLog, `[Embeddings] Failed for ${path.basename(fullPath)}: ${e.message}\n`); } catch { }
+    let vectorBuffer: Buffer | null = precomputed ? precomputed.embedding : null;
+    if (!precomputed) {
+      try {
+        const vector = await this.getEmbeddings().generateEmbedding(gist);
+        vectorBuffer = Buffer.from(new Float32Array(vector).buffer);
+      } catch (e: any) {
+        const debugLog = path.resolve(this.rootDir, '.kiteretsu', 'debug.log');
+        try { fs.appendFileSync(debugLog, `[Embeddings] Failed for ${path.basename(fullPath)}: ${e.message}\n`); } catch { }
+      }
     }
 
     // 4. Resolve imports to database records (fully outside transaction)
@@ -520,26 +536,98 @@ export class Kiteretsu {
       fileMap.set(relativePath, fileId);
     }
 
-    // ─── Pass 2: Index content (Smooth & Lean) ───
+    // ─── Pass 2: Index content (Smooth & Lean Batched) ───
+    const gistsToEmbed: Array<{
+      fullPath: string;
+      relativePath: string;
+      symbols: any[];
+      imports: any[];
+      gist: string;
+      hash: string;
+    }> = [];
+
     let processedCount = 0;
     const toProcess = filesToProcess.length;
 
+    // Step A: Parse and generate gists
+    const parser = await this.getParser();
     for (const relativePath of filesToProcess) {
       try {
         const fullPath = path.resolve(this.rootDir, relativePath);
-        await this.indexFile(fullPath);
-        await knex('files').where({ path: relativePath }).update({ stale: false });
+        this.fileSystemCache.add(fullPath.replace(/\\/g, '/'));
+
+        const { symbols, imports: importInfos } = await parser.parseCode(fullPath);
+        const gist = this.generateTechnicalGist(path.basename(fullPath), symbols, importInfos);
+        const hash = await this.scanner.getFileHash(fullPath);
+
+        gistsToEmbed.push({
+          fullPath,
+          relativePath,
+          symbols,
+          imports: importInfos,
+          gist,
+          hash
+        });
 
         processedCount++;
         if (onProgress) {
-          onProgress(30 + Math.floor((processedCount / toProcess) * 70), 100, `Indexing: ${relativePath}`);
+          onProgress(10 + Math.floor((processedCount / toProcess) * 20), 100, `Parsing: ${relativePath}`);
+        }
+      } catch (error: any) {
+        const debugLog = path.resolve(this.rootDir, '.kiteretsu', 'debug.log');
+        try { fs.appendFileSync(debugLog, `[Indexer] Error parsing ${relativePath}: ${error.message}\n`); } catch { }
+      }
+    }
+
+    // Step B: Batch generate embeddings (chunk size of 32)
+    const gists = gistsToEmbed.map(x => x.gist);
+    const embeddings: Array<Buffer | null> = [];
+    const BATCH_SIZE = 32;
+
+    for (let i = 0; i < gists.length; i += BATCH_SIZE) {
+      const batch = gists.slice(i, i + BATCH_SIZE);
+      if (onProgress) {
+        onProgress(30 + Math.floor((i / gists.length) * 50), 100, `Generating embeddings: ${i}/${gists.length}`);
+      }
+
+      try {
+        const batchVectors = await this.getEmbeddings().generateEmbeddings(batch);
+        for (const vector of batchVectors) {
+          embeddings.push(Buffer.from(new Float32Array(vector).buffer));
+        }
+      } catch (e: any) {
+        const debugLog = path.resolve(this.rootDir, '.kiteretsu', 'debug.log');
+        try { fs.appendFileSync(debugLog, `[Embeddings] Batch failed: ${e.message}\n`); } catch { }
+        for (let j = 0; j < batch.length; j++) {
+          embeddings.push(null);
+        }
+      }
+    }
+
+    // Step C: Database Accretion (Save metadata & embeddings to SQLite)
+    processedCount = 0;
+    for (let i = 0; i < gistsToEmbed.length; i++) {
+      const item = gistsToEmbed[i];
+      const embedding = embeddings[i];
+      try {
+        await this.indexFile(item.fullPath, {
+          symbols: item.symbols,
+          imports: item.imports,
+          gist: item.gist,
+          embedding
+        });
+        await knex('files').where({ path: item.relativePath }).update({ stale: false });
+
+        processedCount++;
+        if (onProgress) {
+          onProgress(80 + Math.floor((processedCount / gistsToEmbed.length) * 20), 100, `Saving: ${item.relativePath}`);
         }
 
         // Safety GC
         if (processedCount % 50 === 0 && (global as any).gc) (global as any).gc();
       } catch (error: any) {
         const debugLog = path.resolve(this.rootDir, '.kiteretsu', 'debug.log');
-        try { fs.appendFileSync(debugLog, `[Indexer] Error indexing ${relativePath}: ${error.message}\n`); } catch { }
+        try { fs.appendFileSync(debugLog, `[Indexer] Error saving ${item.relativePath}: ${error.message}\n`); } catch { }
       }
     }
 
