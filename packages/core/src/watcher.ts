@@ -1,7 +1,7 @@
 import chokidar from 'chokidar';
 import { Kiteretsu } from './index.js';
 import path from 'path';
-import fs from 'fs';
+import fs from 'fs-extra';
 import chalk from 'chalk';
 
 export class CodeWatcher {
@@ -53,7 +53,7 @@ export class CodeWatcher {
         const relativePath = path.relative(rootDir, fullPath).replace(/\\/g, '/');
 
         try {
-          if (fs.existsSync(fullPath)) {
+          if (await fs.pathExists(fullPath)) {
             // Get old symbols for comparison
             const knex = this.kiteretsu.getDatabase().getKnex();
             console.log(chalk.gray(`[Watcher] Analyzing semantic changes for ${relativePath}...`));
