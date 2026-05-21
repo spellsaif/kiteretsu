@@ -388,22 +388,43 @@ export class CodeParser {
     try {
       let wasmPath = '';
       
-      // 1. Try require.resolve safely
+      // 1. Try require.resolve safely (standard module resolution)
       try {
         const wasmsDir = path.dirname(require.resolve('tree-sitter-wasms/package.json'));
         const p = path.join(wasmsDir, 'out', config.wasmFile);
         if (fs.existsSync(p)) wasmPath = p;
       } catch (e) {}
 
-      // 2. Try process.cwd() fallback
+      // 2. Walk up parent directories starting from the current file's directory (workspace/monorepo resolution)
       if (!wasmPath) {
-        const p = path.join(process.cwd(), 'node_modules', 'tree-sitter-wasms', 'out', config.wasmFile);
-        if (fs.existsSync(p)) wasmPath = p;
+        let currentDir = path.dirname(fileURLToPath(import.meta.url));
+        while (currentDir !== path.parse(currentDir).root) {
+          const candidate = path.join(currentDir, 'node_modules', 'tree-sitter-wasms', 'out', config.wasmFile);
+          if (fs.existsSync(candidate)) {
+            wasmPath = candidate;
+            break;
+          }
+          const pnpmCandidateDir = path.join(currentDir, 'node_modules', '.pnpm');
+          if (fs.existsSync(pnpmCandidateDir)) {
+            try {
+              const pnpmFiles = fs.readdirSync(pnpmCandidateDir);
+              const tsWasmFolder = pnpmFiles.find(name => name.includes('tree-sitter-wasms'));
+              if (tsWasmFolder) {
+                const candidate2 = path.join(pnpmCandidateDir, tsWasmFolder, 'node_modules', 'tree-sitter-wasms', 'out', config.wasmFile);
+                if (fs.existsSync(candidate2)) {
+                  wasmPath = candidate2;
+                  break;
+                }
+              }
+            } catch {}
+          }
+          currentDir = path.dirname(currentDir);
+        }
       }
 
-      // 3. Try deep pnpm fallback (for this environment)
+      // 3. Try process.cwd() fallback
       if (!wasmPath) {
-        const p = path.join(process.cwd(), 'node_modules', '.pnpm', 'tree-sitter-wasms@0.1.13', 'node_modules', 'tree-sitter-wasms', 'out', config.wasmFile);
+        const p = path.join(process.cwd(), 'node_modules', 'tree-sitter-wasms', 'out', config.wasmFile);
         if (fs.existsSync(p)) wasmPath = p;
       }
 
@@ -427,6 +448,10 @@ export class CodeParser {
       queries.import?.delete();
     }
     this.queryCache.clear();
+    if (this.parserInstance) {
+      this.parserInstance.delete();
+      this.parserInstance = null;
+    }
     for (const language of this.languages.values()) {
       try {
         const disposableLanguage = language as Language & { delete?: () => void };
@@ -434,10 +459,6 @@ export class CodeParser {
       } catch {}
     }
     this.languages.clear();
-    if (this.parserInstance) {
-      this.parserInstance.delete();
-      this.parserInstance = null;
-    }
   }
 
   async parseCode(filePath: string): Promise<{ symbols: SymbolInfo[], imports: ImportInfo[] }> {
@@ -602,6 +623,79 @@ export class CodeParser {
         }
         for (const match of content.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/g)) {
           addSymbol(match[1], 'variable', match.index);
+        }
+        return symbols;
+      }
+
+      case '.py': {
+        for (const match of content.matchAll(/\bdef\s+([A-Za-z_][\w]*)\s*\(/g)) {
+          addSymbol(match[1], 'function', match.index);
+        }
+        for (const match of content.matchAll(/\bclass\s+([A-Za-z_][\w]*)\b/g)) {
+          addSymbol(match[1], 'class', match.index);
+        }
+        return symbols;
+      }
+
+      case '.go': {
+        // Functions: func name(
+        for (const match of content.matchAll(/\bfunc\s+([A-Za-z_][\w]*)\s*\(/g)) {
+          addSymbol(match[1], 'function', match.index);
+        }
+        // Methods: func (receiver) name(
+        for (const match of content.matchAll(/\bfunc\s*\([^)]+\)\s*([A-Za-z_][\w]*)\s*\(/g)) {
+          addSymbol(match[1], 'method', match.index + match[0].indexOf(match[1]));
+        }
+        // Struct types: type name struct
+        for (const match of content.matchAll(/\btype\s+([A-Za-z_][\w]*)\s+struct\b/g)) {
+          addSymbol(match[1], 'struct', match.index);
+        }
+        return symbols;
+      }
+
+      case '.rs': {
+        for (const match of content.matchAll(/\bfn\s+([A-Za-z_][\w]*)\s*(?:<[^>]+>)?\s*\(/g)) {
+          addSymbol(match[1], 'function', match.index);
+        }
+        for (const match of content.matchAll(/\bstruct\s+([A-Za-z_][\w]*)\b/g)) {
+          addSymbol(match[1], 'struct', match.index);
+        }
+        for (const match of content.matchAll(/\benum\s+([A-Za-z_][\w]*)\b/g)) {
+          addSymbol(match[1], 'class', match.index);
+        }
+        for (const match of content.matchAll(/\btrait\s+([A-Za-z_][\w]*)\b/g)) {
+          addSymbol(match[1], 'interface', match.index);
+        }
+        return symbols;
+      }
+
+      case '.java':
+      case '.cs':
+      case '.kt': {
+        for (const match of content.matchAll(/\bclass\s+([A-Za-z_][\w]*)\b/g)) {
+          addSymbol(match[1], 'class', match.index);
+        }
+        for (const match of content.matchAll(/\binterface\s+([A-Za-z_][\w]*)\b/g)) {
+          addSymbol(match[1], 'interface', match.index);
+        }
+        return symbols;
+      }
+
+      case '.c':
+      case '.cpp':
+      case '.h':
+      case '.hpp': {
+        // C/C++ struct/class
+        for (const match of content.matchAll(/\b(?:struct|class)\s+([A-Za-z_][\w]*)\b/g)) {
+          addSymbol(match[1], 'class', match.index);
+        }
+        // Heuristic function extraction: returnType name(arguments) {
+        for (const match of content.matchAll(/(?:^|\n)\s*[\w:*<>&\s]+?\s+([A-Za-z_][\w]*)\s*\([^)]*\)\s*\{/g)) {
+          const name = match[1];
+          const reserved = ['if', 'for', 'while', 'catch', 'switch', 'return', 'synchronized'];
+          if (!reserved.includes(name)) {
+            addSymbol(name, 'function', match.index + match[0].indexOf(name));
+          }
         }
         return symbols;
       }
