@@ -42,22 +42,20 @@ const LANGUAGE_CONFIG: Record<string, LanguageConfig> = {
     symbolQuery: `
       (function_declaration name: (identifier) @func.name)
       (class_declaration name: (type_identifier) @class.name)
-      (class_declaration name: (identifier) @class.name)
       (method_definition name: (property_identifier) @method.name)
-      (lexical_declaration (variable_declarator name: (identifier) @var.name))
+      (variable_declarator name: (identifier) @var.name)
     `,
-    importQuery: `(_ [(string) (string_literal)] @source)`,
+    importQuery: `(_ (string) @source)`,
   },
   '.tsx': {
     wasmFile: 'tree-sitter-tsx.wasm',
     symbolQuery: `
       (function_declaration name: (identifier) @func.name)
       (class_declaration name: (type_identifier) @class.name)
-      (class_declaration name: (identifier) @class.name)
       (method_definition name: (property_identifier) @method.name)
-      (lexical_declaration (variable_declarator name: (identifier) @var.name))
+      (variable_declarator name: (identifier) @var.name)
     `,
-    importQuery: `(_ [(string) (string_literal)] @source)`,
+    importQuery: `(_ (string) @source)`,
   },
   '.js': {
     wasmFile: 'tree-sitter-javascript.wasm',
@@ -65,9 +63,9 @@ const LANGUAGE_CONFIG: Record<string, LanguageConfig> = {
       (function_declaration name: (identifier) @func.name)
       (class_declaration name: (identifier) @class.name)
       (method_definition name: (property_identifier) @method.name)
-      (lexical_declaration (variable_declarator name: (identifier) @var.name))
+      (variable_declarator name: (identifier) @var.name)
     `,
-    importQuery: `(_ [(string) (string_literal)] @source)`,
+    importQuery: `(_ (string) @source)`,
   },
   '.jsx': {
     wasmFile: 'tree-sitter-javascript.wasm',
@@ -75,19 +73,19 @@ const LANGUAGE_CONFIG: Record<string, LanguageConfig> = {
       (function_declaration name: (identifier) @func.name)
       (class_declaration name: (identifier) @class.name)
       (method_definition name: (property_identifier) @method.name)
-      (lexical_declaration (variable_declarator name: (identifier) @var.name))
+      (variable_declarator name: (identifier) @var.name)
     `,
-    importQuery: `(_ [(string) (string_literal)] @source)`,
+    importQuery: `(_ (string) @source)`,
   },
   '.vue': {
     wasmFile: 'tree-sitter-vue.wasm',
-    symbolQuery: `(attribute_value) @attr.value`,
-    importQuery: `(string) @source`,
+    symbolQuery: ``,
+    importQuery: ``,
   },
   '.svelte': {
     wasmFile: 'tree-sitter-javascript.wasm',
     symbolQuery: `(variable_declarator name: (identifier) @var.name)`,
-    importQuery: `(string) @source`,
+    importQuery: ``,
   },
 
   // ── Python ──────────────────────────────────────────────────────────────────
@@ -263,7 +261,7 @@ const LANGUAGE_CONFIG: Record<string, LanguageConfig> = {
   '.lua': {
     wasmFile: 'tree-sitter-lua.wasm',
     symbolQuery: `
-      (function_declaration name: (identifier) @func.name)
+      (function_definition name: (_) @func.name)
     `,
     importQuery: `
       (function_call name: (identifier) @_fn arguments: (arguments (string) @source) (#eq? @_fn "require"))
@@ -278,7 +276,7 @@ const LANGUAGE_CONFIG: Record<string, LanguageConfig> = {
       (class_definition name: (identifier) @class.name)
     `,
     importQuery: `
-      (import_or_export (configurable_uri (uri (string_literal) @source)))
+      (import_or_export) @source
     `,
   },
 
@@ -297,12 +295,8 @@ const LANGUAGE_CONFIG: Record<string, LanguageConfig> = {
   // ── Zig ─────────────────────────────────────────────────────────────────────
   '.zig': {
     wasmFile: 'tree-sitter-zig.wasm',
-    symbolQuery: `
-      (TopLevelDecl (FnProto (IDENTIFIER) @func.name))
-    `,
-    importQuery: `
-      (BuildinExpr (BUILTINIDENTIFIER) @_fn (Expr (STRINGLITERALSINGLE) @source) (#eq? @_fn "@import"))
-    `,
+    symbolQuery: ``,
+    importQuery: ``,
   },
 
   // ── Bash ────────────────────────────────────────────────────────────────────
@@ -327,7 +321,7 @@ const LANGUAGE_CONFIG: Record<string, LanguageConfig> = {
   '.m': {
     wasmFile: 'tree-sitter-objc.wasm',
     symbolQuery: `(method_definition) @method.name`,
-    importQuery: `(preproc_import path: (string_literal) @source)`,
+    importQuery: `(preproc_include) @source`,
   },
 
   // ── Julia ───────────────────────────────────────────────────────────────────
@@ -379,7 +373,7 @@ export class CodeParser {
    * Uses tree-sitter-wasms package for pre-built WASM binaries.
    */
   private async loadLanguage(ext: string): Promise<Language | null> {
-    if (this.languages.has(ext)) return this.languages.get(ext)!;
+    if (this.languages.has(ext)) return this.languages.get(ext) || null;
 
     await this.ensureInit();
     const config = LANGUAGE_CONFIG[ext];
@@ -430,6 +424,7 @@ export class CodeParser {
 
       if (!wasmPath) {
         debugLog(`[Parser] WASM file not found for ${ext}: ${config.wasmFile}`);
+        this.languages.set(ext, null as any);
         return null;
       }
 
@@ -438,6 +433,7 @@ export class CodeParser {
       return language;
     } catch (e: any) {
       debugLog(`[Parser] Failed to load WASM for ${ext}: ${e.message}`);
+      this.languages.set(ext, null as any);
       return null;
     }
   }
@@ -473,9 +469,11 @@ export class CodeParser {
     const imports = this.parseImportsWithRegex(ext, content) || [];
 
     // 2. Tree-sitter Pass (Deep)
-    // We always prefer Tree-sitter for high-fidelity languages like TS/JS/Python
-    const forceDeepParse = new Set(['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.rb', '.c', '.cpp', '.h', '.hpp', '.java', '.cs', '.php', '.swift', '.kt', '.scala', '.lua', '.dart', '.ex', '.zig']);
-    if (symbols.length > 0 && imports.length > 0 && !forceDeepParse.has(ext)) {
+    // We strictly limit Tree-sitter deep parsing to core high-fidelity languages.
+    // This prevents loading and compiling heavy WASM grammars for 15+ other languages,
+    // keeping memory flat and completely avoiding native V8 OOM / Zone heap issues.
+    const forceDeepParse = new Set(['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs']);
+    if (!forceDeepParse.has(ext)) {
       return { symbols, imports };
     }
 
@@ -497,8 +495,20 @@ export class CodeParser {
       let queries = this.queryCache.get(ext);
       if (!queries) {
         queries = {};
-        if (config.symbolQuery) queries.symbol = new Query(language, config.symbolQuery);
-        if (config.importQuery) queries.import = new Query(language, config.importQuery);
+        if (config.symbolQuery) {
+          try {
+            queries.symbol = new Query(language, config.symbolQuery);
+          } catch (e: any) {
+            debugLog(`[Parser] Symbol query compilation failed for ${ext}: ${e.message}`);
+          }
+        }
+        if (config.importQuery) {
+          try {
+            queries.import = new Query(language, config.importQuery);
+          } catch (e: any) {
+            debugLog(`[Parser] Import query compilation failed for ${ext}: ${e.message}`);
+          }
+        }
         this.queryCache.set(ext, queries);
       }
 
@@ -696,6 +706,150 @@ export class CodeParser {
           if (!reserved.includes(name)) {
             addSymbol(name, 'function', match.index + match[0].indexOf(name));
           }
+        }
+        return symbols;
+      }
+
+      case '.rb': {
+        for (const match of content.matchAll(/\bdef\s+([A-Za-z_][\w!?.]*)\b/g)) {
+          addSymbol(match[1], 'function', match.index);
+        }
+        for (const match of content.matchAll(/\bclass\s+([A-Za-z_][\w:]*)\b/g)) {
+          addSymbol(match[1], 'class', match.index);
+        }
+        for (const match of content.matchAll(/\bmodule\s+([A-Za-z_][\w:]*)\b/g)) {
+          addSymbol(match[1], 'module', match.index);
+        }
+        return symbols;
+      }
+
+      case '.php': {
+        for (const match of content.matchAll(/\bfunction\s+([A-Za-z_][\w]*)\s*\(/g)) {
+          addSymbol(match[1], 'function', match.index);
+        }
+        for (const match of content.matchAll(/\bclass\s+([A-Za-z_][\w]*)\b/g)) {
+          addSymbol(match[1], 'class', match.index);
+        }
+        for (const match of content.matchAll(/\binterface\s+([A-Za-z_][\w]*)\b/g)) {
+          addSymbol(match[1], 'interface', match.index);
+        }
+        return symbols;
+      }
+
+      case '.swift': {
+        for (const match of content.matchAll(/\bfunc\s+([A-Za-z_][\w]*)\b/g)) {
+          addSymbol(match[1], 'function', match.index);
+        }
+        for (const match of content.matchAll(/\bclass\s+([A-Za-z_][\w]*)\b/g)) {
+          addSymbol(match[1], 'class', match.index);
+        }
+        for (const match of content.matchAll(/\bprotocol\s+([A-Za-z_][\w]*)\b/g)) {
+          addSymbol(match[1], 'interface', match.index);
+        }
+        return symbols;
+      }
+
+      case '.scala': {
+        for (const match of content.matchAll(/\bdef\s+([A-Za-z_][\w]*)\b/g)) {
+          addSymbol(match[1], 'function', match.index);
+        }
+        for (const match of content.matchAll(/\bclass\s+([A-Za-z_][\w]*)\b/g)) {
+          addSymbol(match[1], 'class', match.index);
+        }
+        for (const match of content.matchAll(/\btrait\s+([A-Za-z_][\w]*)\b/g)) {
+          addSymbol(match[1], 'interface', match.index);
+        }
+        for (const match of content.matchAll(/\bobject\s+([A-Za-z_][\w]*)\b/g)) {
+          addSymbol(match[1], 'module', match.index);
+        }
+        return symbols;
+      }
+
+      case '.lua': {
+        for (const match of content.matchAll(/\bfunction\s+([A-Za-z_][\w.:]*)\s*\(/g)) {
+          addSymbol(match[1], 'function', match.index);
+        }
+        return symbols;
+      }
+
+      case '.dart': {
+        for (const match of content.matchAll(/\bclass\s+([A-Za-z_][\w]*)\b/g)) {
+          addSymbol(match[1], 'class', match.index);
+        }
+        for (const match of content.matchAll(/(?:^|\n)\s*[\w<>?]+?\s+([A-Za-z_][\w]*)\s*\([^)]*\)\s*\{/g)) {
+          const name = match[1];
+          const reserved = ['if', 'for', 'while', 'catch', 'switch', 'return'];
+          if (!reserved.includes(name)) {
+            addSymbol(name, 'function', match.index + match[0].indexOf(name));
+          }
+        }
+        return symbols;
+      }
+
+      case '.ex': {
+        for (const match of content.matchAll(/\bdefmodule\s+([A-Za-z_][\w.]*)\b/g)) {
+          addSymbol(match[1], 'module', match.index);
+        }
+        for (const match of content.matchAll(/\bdefp?\s+([A-Za-z_][\w!?]*)\b/g)) {
+          addSymbol(match[1], 'function', match.index);
+        }
+        return symbols;
+      }
+
+      case '.zig': {
+        for (const match of content.matchAll(/\bfn\s+([A-Za-z_][\w]*)\b/g)) {
+          addSymbol(match[1], 'function', match.index);
+        }
+        for (const match of content.matchAll(/\bconst\s+([A-Za-z_][\w]*)\s*=\s*(?:pub\s+)?(?:extern\s+|packed\s+)?(?:struct|enum|union)\b/g)) {
+          addSymbol(match[1], 'struct', match.index);
+        }
+        return symbols;
+      }
+
+      case '.sh': {
+        for (const match of content.matchAll(/\bfunction\s+([A-Za-z_][\w-]*)\b/g)) {
+          addSymbol(match[1], 'function', match.index);
+        }
+        for (const match of content.matchAll(/\b([A-Za-z_][\w-]*)\s*\(\s*\)\s*\{/g)) {
+          addSymbol(match[1], 'function', match.index);
+        }
+        return symbols;
+      }
+
+      case '.ps1': {
+        for (const match of content.matchAll(/\bfunction\s+([A-Za-z_][\w-]*)\b/g)) {
+          addSymbol(match[1], 'function', match.index);
+        }
+        return symbols;
+      }
+
+      case '.m': {
+        for (const match of content.matchAll(/@interface\s+([A-Za-z_][\w]*)/g)) {
+          addSymbol(match[1], 'class', match.index);
+        }
+        for (const match of content.matchAll(/@implementation\s+([A-Za-z_][\w]*)/g)) {
+          addSymbol(match[1], 'class', match.index);
+        }
+        for (const match of content.matchAll(/[-+]\s*\([^)]*\)\s*([A-Za-z_][\w:]*)/g)) {
+          addSymbol(match[1], 'method', match.index);
+        }
+        return symbols;
+      }
+
+      case '.jl': {
+        for (const match of content.matchAll(/\bfunction\s+([A-Za-z_][\w!.]*)\b/g)) {
+          addSymbol(match[1], 'function', match.index);
+        }
+        for (const match of content.matchAll(/\b(?:mutable\s+)?struct\s+([A-Za-z_][\w]*)\b/g)) {
+          addSymbol(match[1], 'struct', match.index);
+        }
+        return symbols;
+      }
+
+      case '.v':
+      case '.sv': {
+        for (const match of content.matchAll(/\bmodule\s+([A-Za-z_][\w]*)\b/g)) {
+          addSymbol(match[1], 'class', match.index);
         }
         return symbols;
       }
@@ -941,6 +1095,11 @@ export class CodeParser {
    * Normalize a raw import string based on the language's conventions.
    */
   private normalizeImport(ext: string, raw: string): string {
+    // If the raw string contains quotes inside it (e.g. it's a full import statement like `import "foo"`), extract the quoted string
+    if ((raw.includes('"') || raw.includes("'") || raw.includes('`')) && (raw.startsWith('import') || raw.startsWith('export') || raw.startsWith('require') || raw.startsWith('use') || raw.includes('include'))) {
+      const match = raw.match(/["'`]([^"'`]+)["'`]/);
+      if (match) raw = match[1];
+    }
     // Strip surrounding quotes for all languages
     let source = raw.replace(/^['"`]|['"`]$/g, '');
 
