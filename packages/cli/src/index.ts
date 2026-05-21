@@ -431,7 +431,7 @@ Before attempting ANY task, refactor, or architectural design query, you **MUST*
           if (!await fs.pathExists(path.join(targetDir, '.git'))) {
             throw new Error('Not a git repository.');
           }
-          const hookContent = `#!/bin/sh\n# Kiteretsu Auto-Index Hook\n# Keeps your codebase memory fresh in the background on commit or pull/merge\n\nif [ -f "./node_modules/.bin/kiteretsu" ]; then\n  ./node_modules/.bin/kiteretsu index > /dev/null 2>&1 &\nelif command -v kiteretsu >/dev/null 2>&1; then\n  kiteretsu index > /dev/null 2>&1 &\nelse\n  npx kiteretsu index > /dev/null 2>&1 &\nfi\n`;
+           const hookContent = `#!/bin/sh\n# Kiteretsu Auto-Index Hook\n# Keeps your codebase memory fresh in the background on commit or pull/merge\n\nif [ -f "./node_modules/.bin/kiteretsu" ]; then\n  KITERETSU_DISABLE_EMBEDDINGS=1 ./node_modules/.bin/kiteretsu index > /dev/null 2>&1 &\nelif command -v kiteretsu >/dev/null 2>&1; then\n  KITERETSU_DISABLE_EMBEDDINGS=1 kiteretsu index > /dev/null 2>&1 &\nelse\n  KITERETSU_DISABLE_EMBEDDINGS=1 npx kiteretsu index > /dev/null 2>&1 &\nfi\n`;
           const commitHook = path.join(targetDir, '.git', 'hooks', 'post-commit');
           const mergeHook = path.join(targetDir, '.git', 'hooks', 'post-merge');
           
