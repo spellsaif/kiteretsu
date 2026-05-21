@@ -126,13 +126,13 @@ program
         ].join('\n'),
         { padding: 1, margin: 1, borderStyle: 'round', borderColor: 'green' }
       ));
-      // Allow native worker threads (Transformers.js/ONNX/OpenSSL) a moment to finalize
-      // before the process hard-exits, which prevents 'Zone' OOM crashes on Windows.
-      setTimeout(() => process.exit(0), 300);
+      await getKiteretsu().destroy();
+      process.exit(0);
     } catch (error: any) {
       progressBar.stop();
       console.error(chalk.red('\nIndexing failed: ' + error.message));
-      setTimeout(() => process.exit(1), 300);
+      try { await getKiteretsu().destroy(); } catch {}
+      process.exit(1);
     }
   });
 
