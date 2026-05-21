@@ -1,117 +1,151 @@
 <div align="center">
-  <img src="https://i.ibb.co/cKjWsd7p/kiteretsu.png" width="320" alt="Kiteretsu Logo" />
+  <img src="https://i.ibb.co/cKjWsd7p/kiteretsu.png" width="280" alt="Kiteretsu Logo" />
   <h1>Kiteretsu</h1>
-  <p><strong>Codebase Intelligence & Agent Memory Layer</strong></p>
-  <p>Stop letting AI agents hallucinate code. Give them a map.</p>
+  <p><strong>The Cognitive Memory & Externalized Spatial Intelligence Layer for AI Coding Agents</strong></p>
+
+  <p>
+    <a href="https://github.com/spellsaif/kiteretsu/actions"><img src="https://img.shields.io/badge/build-passing-brightgreen?style=flat-square" alt="Build Status" /></a>
+    <a href="https://www.sqlite.org/wal.html"><img src="https://img.shields.io/badge/database-SQLite%20WAL-orange?style=flat-square" alt="Database" /></a>
+    <a href="https://tree-sitter.github.io/tree-sitter/"><img src="https://img.shields.io/badge/parser-tree--sitter-blue?style=flat-square" alt="Parser" /></a>
+    <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/protocol-MCP%20Enabled-purple?style=flat-square" alt="MCP" /></a>
+  </p>
+
+  <h4>"Stop letting AI agents blindly navigate your architecture. Give them the Encyclopedia."</h4>
 </div>
 
 ---
 
-## 🧠 The Philosophy
+## 🔮 The Philosophy
 
-LLMs are brilliant code generators, but they are terrible at codebase navigation. When you ask an AI agent to build a feature, it usually wastes time grepping through unrelated files, hallucinates context, or breaks downstream dependencies it didn't know existed.
+### 1. The Heritage of Invention
+**Kiteretsu** (キテレツ) draws its name and spirit from the legendary anime *Kiteretsu Daihyakka*. In the story, the young inventor, Eiichi, is able to construct marvelous, advanced machines not through sheer guesswork or trial-and-error, but by referencing the **Kiteretsu Encyclopedia**—a multi-volume codex containing the designs, rules, and warnings of his genius ancestor. 
 
-**Kiteretsu acts as a Context Compiler and Memory Layer.** 
+In modern software engineering, AI coding agents are incredibly gifted builders, but they are operating without an encyclopedia. When left to build blindly, even the most capable LLM wastes time recursively grepping directories, hallucinating structural dependencies, violating team idioms, and causing architectural decay. 
 
-Instead of an AI reading your codebase blindly, it asks Kiteretsu: *"What do I need to read to complete this task?"* 
-Kiteretsu instantly returns the precise files, the calculated blast radius, and any architectural rules the team has set.
+**Kiteretsu is the externalized Encyclopedia for your AI agents.** It provides a persistent, high-fidelity context compiler and memory layer, serving as the agent's spatial awareness.
 
-* **Kiteretsu is the Librarian:** "Read these three files, follow these rules, and be careful—changing this breaks that."
-* **AI Agent is the Reader:** Understands the exact files provided and writes the code perfectly.
+### 2. Cognitive Offloading & Contextual Budgeting
+Human brains manage complexity through spatial maps and contextual boundaries. AI agents, however, are forced to operate in narrow context windows. Blindly dumping a whole codebase into an LLM context creates noise, increases costs, and degrades generation quality. 
 
-## ✨ Features
+Kiteretsu solves this through **Spatial Intentionality**:
+- **Cognitive Mapping**: By parsing the codebase into a high-fidelity directed dependency graph using Web-Tree-Sitter, Kiteretsu knows exactly where symbols begin, end, and flow.
+- **Accretion & Pruning**: Instead of naive text chunking, Kiteretsu utilizes an optimized token-budgeting system (capping active code context at 8,000 tokens) to supply agents with the exact files they *must* read (`read_first`) while cleanly segregating downstream dependencies (`optional_read`).
+- **Architectural Guardrails**: Humans set explicit, queryable governance rules (e.g., "Do not use axios; use native fetch"). The agent is dynamically served these constraints on-demand, preventing structural drift before a single line of code is written.
 
-- ⚡ **Lightning Fast Indexing**: Uses Tree-sitter to parse your codebase and extract symbols and dependencies.
-- 💥 **Blast Radius Calculation**: Graph-based dependency analysis tells you exactly what files will break before you make a change.
-- 🛡️ **Architectural Governance (Rules)**: Teach Kiteretsu your team's conventions (e.g., "Use Hono, not Express"). Agents will automatically see these rules when modifying related code.
-- 📖 **Task Memory**: Record successful patterns and failed attempts. When an agent attempts a similar task in the future, it learns from the past.
-- 🔒 **100% Local**: Powered by a local SQLite WAL database. Zero external API calls. Your code never leaves your machine.
-- 📊 **Interactive Dashboard**: Visualize your codebase dependency graph, monitor memory, and manage rules.
+---
+
+## ✨ Core Capabilities
+
+*   ⚡ **WAL-Powered Graph Database**: Fully local, highly concurrent SQLite WAL database using Knex and native `sqlite-vec` extension for semantic embedding searches.
+*   💥 **Blast Radius Calculation**: Instant dependency analysis traces imports across all directories, revealing exactly which files will be affected by a target code change.
+*   🛡️ **Architectural Governance**: Seamlessly record and inject team-specific architectural rules directly into the agent's pre-computation loop.
+*   📖 **Episodic Task Memory**: Record historical task successes and failures. When agents attempt similar features in the future, they learn from past engineering decisions.
+*   🌐 **Multi-Language Fidelity**: Features native WASM-based tree-sitter grammars with ultra-resilient regex parser fallbacks for JS/TS, Python, Go, Rust, Ruby, C/C++, Java, Kotlin, Swift, and Scala.
+*   🔌 **First-Class MCP Integration**: Natively serves as a Model Context Protocol (MCP) server, instantly plugging into Claude Code, Cursor, Antigravity, VS Code, and Aider.
+
+---
 
 ## 🚀 Quick Start
 
-Initialize Kiteretsu in your existing monorepo or project:
+Initialize Kiteretsu in your workspace or project root:
 
 ```bash
-# 1. Install via npm/pnpm
+# 1. Install dependencies
 pnpm add -w @kiteretsu/cli @kiteretsu/core
 
-# 2. Initialize the project (Creates .kiteretsu/ folder)
+# 2. Initialize Kiteretsu directory and SQLite database
 pnpm cli init
 
-# 3. Index your codebase
+# 3. Perform the initial codebase parse and memory index
 pnpm cli index
 ```
 
+---
+
 ## 🛠️ The Agentic Workflow
 
-Kiteretsu changes how you pair-program with AI. Instead of giving an agent an open-ended prompt and hoping it doesn't break your architecture, follow this loop:
+Kiteretsu introduces a strict, secure feedback loop for AI agent interaction. Rather than letting agents run arbitrary terminal commands, enforce the **Kiteretsu Cycle**:
 
-### Step 1: The Human Sets the Guardrails
-Before the agent starts, the human developer ensures Kiteretsu knows the rules.
-```bash
-# Add an architectural rule
-pnpm cli record-rule "no-axios" "Use native fetch API. Do not install or use axios."
+```mermaid
+graph TD
+    A[Human Developer] -->|1. Set Guardrails & Rules| B(Kiteretsu Memory)
+    A -->|2. Assigns Task| C[AI Agent]
+    C -->|3. Requests Directions| B
+    B -->|4. Compiles Context Pack| C
+    C -->|5. Writes Safe, Idiomatic Code| D[Target Codebase]
+    D -->|6. Record Episodic Outcome| B
 ```
 
-### Step 2: The Agent Asks for Directions
-The human prompts the agent: *"Add a shopping cart."*
-The very first thing the AI agent does is ask Kiteretsu for the context map:
+### Step 1: Human Sets the Guardrails
 ```bash
-pnpm cli context "add shopping cart feature"
+# Record an explicit architectural convention
+pnpm cli record-rule "use-hono-router" "Use Hono router instead of raw express for routing. Hono is fully type-safe."
 ```
 
-**Kiteretsu's Output:**
+### Step 2: Agent Obtains the Context Map
+The agent intercepts the user's task and immediately runs:
+```bash
+pnpm cli context "refactor cart routing"
+```
+
+**Kiteretsu's Response:**
 ```text
 📦 Context Pack Compiled
 
+Task: refactor cart routing
+
 📁 Read First:
-  - src/store/cartStore.ts
-  - src/components/CartIcon.tsx
+  - packages/server/src/routes/cart.ts
+    Core structures: CartRouter. Key logic: initializeRoutes, getCart, updateCart.
 
 💥 Blast Radius:
-  ⚡ src/components/Header.tsx (Will break if CartIcon props change)
+  ⚡ packages/server/src/App.ts (Will break if CartRouter exports change)
+  ⚡ packages/core/test/routes.test.ts
 
-📏 Rules:
-  - no-axios: Use native fetch API. Do not install or use axios.
+🧪 Tests to Run:
+  ✓ packages/core/test/routes.test.ts
+
+📏 Rules to Follow:
+  - use-hono-router: Use Hono router instead of raw express for routing. Hono is fully type-safe.
 ```
 
-### Step 3: The Agent Writes Code Safely
-Armed with the Context Pack, the agent:
-1. Only reads `cartStore.ts` and `CartIcon.tsx` (ignoring 200 other irrelevant files).
-2. Modifies `Header.tsx` proactively because it saw it in the Blast Radius.
-3. Uses `fetch` instead of `axios` because it read the Rule.
+### Step 3: Agent Implements the Changes
+The agent now has spatial awareness: it reads *only* `cart.ts` (saving massive context), modifies `App.ts` because it predicted the blast radius, uses Hono because of the rule, and knows exactly which test suite to run for verification.
 
-### Step 4: The Team Remembers
-Once the feature is successfully merged, record the task. Kiteretsu will surface this memory to future agents working on similar features.
+### Step 4: Offload the Episodic Memory
+Once verification succeeds, the agent records the outcome:
 ```bash
-pnpm cli record-task "added cart" success --notes "Used Zustand for state management."
+pnpm cli record-task "refactored cart routing to hono" success --notes "Hono transition completed. Speed increased by 14%."
 ```
-
-## 🖥️ The Dashboard
-
-Kiteretsu includes a beautiful, local-first dashboard to visualize your codebase memory, manage rules, and view the interactive dependency graph.
-
-Run the dashboard from your monorepo root:
-```bash
-# Start the backend API server
-pnpm server
-
-# Start the dashboard UI (in a new terminal)
-pnpm dashboard
-```
-Open `http://localhost:5173` to see your codebase visually mapped out.
-
-## 🤖 Integrations
-
-Kiteretsu is designed to be agent-agnostic. It can be integrated via CLI hooks, or natively via our **Model Context Protocol (MCP)** server, making it compatible with:
-- Cursor
-- Claude Code
-- Antigravity
-- Devin / Devika
-- Any other LLM tooling
 
 ---
+
+## 🖥️ Local Dashboard
+
+Visualize your dependency network, examine token budgets, and manage architectural rules directly from a local-first interface:
+
+```bash
+# Spin up the watcher, backend server, and open the interface
+pnpm cli ui
+```
+*Accessible locally at http://localhost:3000.*
+
+---
+
+## 🤖 Integration Protocol
+
+To integrate Kiteretsu with your developer environment of choice, use the auto-integration CLI:
+
+```bash
+# Install integration rules and workflows for your platform
+pnpm cli integrate cursor
+pnpm cli integrate claude
+pnpm cli integrate gemini
+pnpm cli integrate antigravity
+```
+
+---
+
 <div align="center">
-  <p>Built for the next generation of agentic development.</p>
+  <p>Architected for the age of self-healing, agentic codebases.</p>
 </div>
