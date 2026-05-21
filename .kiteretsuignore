@@ -1,0 +1,31 @@
+# Kiteretsu Ignore File
+# Standard glob patterns to exclude from indexing
+
+**/.kiteretsu/**
+**/.git/**
+**/.turbo/**
+**/.cache/**
+**/.next/**
+**/.nuxt/**
+**/.svelte-kit/**
+**/.gradle/**
+**/.venv/**
+**/venv/**
+**/__pycache__/**
+**/node_modules/**
+**/dist/**
+**/build/**
+**/target/**
+**/vendor/**
+**/coverage/**
+**/out/**
+**/scratch/**
+**/temp/**
+**/*.pyc
+**/*.tsbuildinfo
+**/pnpm-lock.yaml
+**/package-lock.json
+**/yarn.lock
+**/web_modules/**
+
+# Custom ignores below

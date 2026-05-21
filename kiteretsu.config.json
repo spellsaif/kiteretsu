@@ -1,0 +1,12 @@
+{
+  "name": "kiteretsu",
+  "version": "1.0.0",
+  "indexing": {
+    "maxFileSize": "10MB",
+    "deepParseLimit": "500KB"
+  },
+  "search": {
+    "precision": "high",
+    "provider": "transformers"
+  }
+}
