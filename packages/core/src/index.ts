@@ -758,8 +758,11 @@ export class Kiteretsu {
       return targetBase;
     }
     if (await fs.pathExists(targetBase)) {
-      this.fileSystemCache.add(targetBase);
-      return targetBase;
+      const stat = await fs.stat(targetBase);
+      if (!stat.isDirectory()) {
+        this.fileSystemCache.add(targetBase);
+        return targetBase;
+      }
     }
 
     const exts = [
@@ -781,8 +784,11 @@ export class Kiteretsu {
           return candidate;
         }
         if (await fs.pathExists(candidate)) {
-          this.fileSystemCache.add(candidate);
-          return candidate;
+          const stat = await fs.stat(candidate);
+          if (!stat.isDirectory()) {
+            this.fileSystemCache.add(candidate);
+            return candidate;
+          }
         }
         // Language-specific directory entry points
         const dirCandidates = [
@@ -797,8 +803,11 @@ export class Kiteretsu {
             return dc;
           }
           if (await fs.pathExists(dc)) {
-            this.fileSystemCache.add(dc);
-            return dc;
+            const stat = await fs.stat(dc);
+            if (!stat.isDirectory()) {
+              this.fileSystemCache.add(dc);
+              return dc;
+            }
           }
         }
       }
