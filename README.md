@@ -28,6 +28,18 @@ npx kiteretsu init
 
 ---
 
+## 🔮 The Heritage & Philosophy: The Inventor's Encyclopedia
+
+### 1. The Heritage of Invention
+**Kiteretsu** (キテレツ) draws its name and spirit from the classic Japanese anime and manga *Kiteretsu Daihyakka* (キテレツ大百科). In the story, the brilliant young inventor, Eiichi, constructs marvelous inventions (like Korosuke the automaton) not through blind trial-and-error or brute-force guessing, but by referencing the **Kiteretsu Encyclopedia**—a multi-volume codex containing the architectural designs, physical laws, formulas, and warnings left behind by his genius ancestor, Kiteretsu-sai.
+
+### 2. The Modern Engineering Analogy
+In modern software engineering, AI coding agents are extraordinarily talented builders, but they are operating without an encyclopedia. When left on their own, even the most capable LLMs waste context tokens repeatedly guessing directory structures, hallucinating dependency graphs, violating team idioms, and repeating previous mistakes.
+
+**Kiteretsu is the externalized Encyclopedia for your AI agents.** It provides a continuous, persistent code intelligence graph and memory layer that gives agents spatial awareness, architectural guardrails, and historical lessons before they write a single line of code.
+
+---
+
 ## 🛑 The Problem
 
 Modern AI coding agents are extraordinarily capable code generators, but they are architecturally blind:
