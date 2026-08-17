@@ -23,6 +23,7 @@ export class Database {
             conn.loadExtension(getLoadablePath());
             conn.pragma('journal_mode = WAL');
             conn.pragma('synchronous = NORMAL');
+            conn.pragma('foreign_keys = ON');
             cb(null, conn);
           } catch (e: any) {
             cb(e, conn);
@@ -34,7 +35,10 @@ export class Database {
   }
 
   async initialize() {
-    // WAL mode disabled for crash stability (writes directly to db.sqlite)
+    // Enable foreign keys for cascades
+    try {
+      await this.db.raw('PRAGMA foreign_keys = ON');
+    } catch { }
 
     if (!(await this.db.schema.hasTable('files'))) {
       await this.db.schema.createTable('files', (table) => {
@@ -74,18 +78,20 @@ export class Database {
     if (!(await this.db.schema.hasTable('graph_edges'))) {
       await this.db.schema.createTable('graph_edges', (table) => {
         table.increments('id').primary();
-        table.string('source_type').notNullable();
-        table.integer('source_id').references('id').inTable('files').onDelete('CASCADE').notNullable();
-        table.string('relation').notNullable(); // imports, tested_by
-        table.string('target_type').notNullable();
-        table.integer('target_id').references('id').inTable('files').onDelete('CASCADE').notNullable();
+        table.string('source_type').notNullable(); // 'file', 'symbol'
+        table.integer('source_id').notNullable();
+        table.string('relation').notNullable(); // 'imports', 'calls', 'references', 'extends', 'implements', 'exports', 'tested_by'
+        table.string('target_type').notNullable(); // 'file', 'symbol'
+        table.integer('target_id').notNullable();
         table.float('confidence').defaultTo(1.0);
         table.string('provenance');
         table.timestamps(true, true);
 
-        // Indexes for fast blast radius lookups
-        table.index(['source_id', 'relation']);
-        table.index(['target_id', 'relation']);
+        // Multi-type graph indexes & uniqueness
+        table.unique(['source_type', 'source_id', 'relation', 'target_type', 'target_id']);
+        table.index(['source_type', 'source_id', 'relation']);
+        table.index(['target_type', 'target_id', 'relation']);
+        table.index(['relation']);
       });
     }
 
@@ -96,18 +102,38 @@ export class Database {
         table.string('type').notNullable();
         table.string('outcome'); // success, failure
         table.text('notes');
+        table.binary('embedding');
         table.timestamps(true, true);
+      });
+    }
+
+    if (!(await this.db.schema.hasColumn('tasks', 'embedding'))) {
+      await this.db.schema.table('tasks', (table) => {
+        table.binary('embedding');
       });
     }
 
     if (!(await this.db.schema.hasTable('rules'))) {
       await this.db.schema.createTable('rules', (table) => {
         table.increments('id').primary();
-        table.string('name').notNullable();
+        table.string('name').unique().notNullable();
         table.text('description').notNullable();
         table.string('scope_type'); // global, path, language
         table.string('scope_value');
         table.string('severity').defaultTo('info');
+        table.timestamps(true, true);
+      });
+    }
+
+    if (!(await this.db.schema.hasTable('decisions'))) {
+      await this.db.schema.createTable('decisions', (table) => {
+        table.increments('id').primary();
+        table.string('title').notNullable();
+        table.text('rationale').notNullable();
+        table.text('alternatives_considered');
+        table.text('affected_paths'); // JSON array of paths/globs
+        table.string('status').defaultTo('active'); // active, deprecated, superseded
+        table.binary('embedding');
         table.timestamps(true, true);
       });
     }

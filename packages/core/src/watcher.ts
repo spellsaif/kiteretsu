@@ -1,5 +1,6 @@
 import chokidar from 'chokidar';
 import { Kiteretsu } from './index.js';
+import { SUPPORTED_EXTENSIONS } from './parser.js';
 import path from 'path';
 import fs from 'fs-extra';
 import chalk from 'chalk';
@@ -7,19 +8,18 @@ import chalk from 'chalk';
 export class CodeWatcher {
   private watcher: any = null;
   private kiteretsu: Kiteretsu;
+  private queue: string[] = [];
+  private isProcessing: boolean = false;
+  private debounceTimeouts: Map<string, NodeJS.Timeout> = new Map();
+  private isStarted: boolean = false;
 
   constructor(kiteretsu: Kiteretsu) {
     this.kiteretsu = kiteretsu;
   }
 
-  private queue: string[] = [];
-  private isProcessing: boolean = false;
-  private debounceTimeouts: Map<string, NodeJS.Timeout> = new Map();
-  private static isStarted: boolean = false;
-
   async start(rootDir: string) {
-    if (CodeWatcher.isStarted) return;
-    CodeWatcher.isStarted = true;
+    if (this.isStarted) return;
+    this.isStarted = true;
 
     return new Promise<void>(async (resolve, reject) => {
       const absoluteRoot = path.resolve(rootDir).replace(/\\/g, '/');
@@ -123,7 +123,7 @@ export class CodeWatcher {
         this.debounceTimeouts.set(normalized, timeout);
       };
 
-      const supportedExtensions = ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.java', '.rb', '.c', '.cpp', '.php', '.cs', '.swift', '.lua'];
+      const supportedExtensions = SUPPORTED_EXTENSIONS;
 
       this.watcher
         .on('all', (event: string, filePath: string) => {
@@ -151,6 +151,14 @@ export class CodeWatcher {
   stop() {
     if (this.watcher) {
       this.watcher.close();
+      this.watcher = null;
     }
+    this.isStarted = false;
+    for (const timeout of this.debounceTimeouts.values()) {
+      clearTimeout(timeout);
+    }
+    this.debounceTimeouts.clear();
+    this.queue = [];
+    this.isProcessing = false;
   }
 }
