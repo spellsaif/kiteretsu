@@ -4,6 +4,7 @@ import { EmbeddingEngine } from '../embeddings.js';
 export interface SemanticSearchResult {
   path: string;
   distance: number;
+  summary?: string;
 }
 
 export class SemanticRetriever {
@@ -16,6 +17,7 @@ export class SemanticRetriever {
     const results = await this.knex.raw(`
       SELECT 
         path,
+        summary,
         vec_distance_cosine(embedding, ?) as distance
       FROM files
       WHERE embedding IS NOT NULL
@@ -23,6 +25,10 @@ export class SemanticRetriever {
       LIMIT ?
     `, [vectorBuffer, limit]);
 
-    return results;
+    return results.map((r: any) => ({
+      path: r.path,
+      summary: r.summary,
+      distance: Number(r.distance)
+    }));
   }
 }

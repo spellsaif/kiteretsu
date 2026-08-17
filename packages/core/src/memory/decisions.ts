@@ -8,7 +8,7 @@ export interface DecisionRecord {
   rationale: string;
   alternatives_considered?: string;
   affected_paths?: string[];
-  status?: 'active' | 'deprecated' | 'superseded';
+  status?: 'proposed' | 'accepted' | 'superseded' | 'deprecated' | 'rejected' | 'active';
   created_at?: string;
   updated_at?: string;
 }
