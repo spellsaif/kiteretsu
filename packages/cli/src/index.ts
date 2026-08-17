@@ -7,10 +7,15 @@ import boxen from 'boxen';
 import gradient from 'gradient-string';
 import { Kiteretsu } from '@kiteretsu/core';
 import { CodeWatcher } from '@kiteretsu/core/watcher.js';
+import {
+  AgentDetector,
+  AgentInstaller,
+  AgentUpdater,
+  AgentDoctor
+} from '@kiteretsu/agent-bridge';
 import path from 'path';
 import fs from 'fs-extra';
 import inquirer from 'inquirer';
-import os from 'os';
 
 const program = new Command();
 
@@ -41,26 +46,18 @@ function findWorkspaceRoot(startDir: string): string {
   return startDir;
 }
 
-const executionDir = process.cwd();
-const initCwd = process.env.INIT_CWD;
-let rootDir = initCwd || executionDir;
+const rootDir = findWorkspaceRoot(process.cwd());
+const config = { rootDir };
 
-// If we are inside packages/cli and INIT_CWD is not set correctly, try to find the root
-if (rootDir.includes('packages' + path.sep + 'cli')) {
-  rootDir = findWorkspaceRoot(rootDir);
-}
-
-const configPath = path.join(rootDir, '.kiteretsu', 'config.json');
-let config = { rootDir };
-
+// Read kiteretsu.config.json if available
+const configPath = path.join(rootDir, 'kiteretsu.config.json');
 if (fs.existsSync(configPath)) {
   try {
     const fileConfig = fs.readJsonSync(configPath);
-    config = { ...fileConfig, rootDir };
+    Object.assign(config, fileConfig);
   } catch (e) { }
 }
 
-// Initialize Kiteretsu lazily to avoid overhead for simple commands
 let kiteretsuInstance: Kiteretsu | null = null;
 function getKiteretsu() {
   if (!kiteretsuInstance) {
@@ -75,30 +72,363 @@ console.log(chalk.gray(`  Root: ${rootDir}\n`));
 
 program
   .name('kiteretsu')
-  .description('Agent memory and context compiler for AI coding agents')
+  .description('Continuous Code Intelligence Graph and Memory Layer for AI coding agents')
   .version('0.1.0');
 
+// ─── 1. INIT COMMAND (Primary Onboarding) ───
 program
   .command('init')
-  .description('Initialize Kiteretsu in the current repository')
+  .description('One-command onboarding: detect repo, configure agents & MCP, initialize and index')
   .action(async () => {
-    const spinner = ora('Initializing Kiteretsu...').start();
+    console.log(chalk.bold.cyan('🔍 Detecting environment & AI coding agents...\n'));
+    const detector = new AgentDetector();
+    const detected = await detector.detect(rootDir);
+
+    if (detected.length > 0) {
+      console.log(chalk.bold('Detected:'));
+      detected.forEach(d => console.log(chalk.green(`  ✓ ${d.name}`)));
+    } else {
+      console.log(chalk.yellow('  ℹ No specific agent detected. Configuring universal AGENTS.md & MCP.'));
+    }
+
+    console.log(chalk.bold.cyan('\n⚙ Installing Kiteretsu Agent Bridge & MCP...'));
+    const installer = new AgentInstaller(detector);
+    const installResult = await installer.install({ rootDir });
+
+    installResult.installed.forEach(i => {
+      console.log(chalk.green(`  ✓ ${i.name} managed instructions`));
+    });
+    console.log(chalk.green('  ✓ MCP Server configuration'));
+
+    const spinner = ora('Initializing repository intelligence database...').start();
     try {
       await getKiteretsu().init();
-      spinner.succeed(chalk.green('✨ Kiteretsu initialized successfully!'));
-      console.log(boxen(
-        chalk.white('Created .kiteretsu/ folder\nInitialized SQLite database\nGenerated config.json'),
-        { padding: 1, margin: 1, borderStyle: 'round', borderColor: 'cyan' }
+      spinner.succeed(chalk.green('  ✓ Database and memory initialized'));
+    } catch (e: any) {
+      spinner.fail(chalk.red('Initialization failed: ' + e.message));
+      process.exit(1);
+    }
+
+    console.log(chalk.bold.cyan('\n📦 Indexing repository...'));
+    const progressBar = new cliProgress.SingleBar({
+      format: chalk.cyan('  Indexing ') + '|' + chalk.cyan('{bar}') + '| {percentage}% | {message}',
+      barCompleteChar: '\u2588',
+      barIncompleteChar: '\u2591',
+      hideCursor: true
+    }, cliProgress.Presets.shades_classic);
+
+    progressBar.start(100, 0, { message: 'Scanning...' });
+    try {
+      const stats = await getKiteretsu().index((current, total, message) => {
+        progressBar.update(current, { message });
+      });
+      progressBar.update(100, { message: 'Complete!' });
+      progressBar.stop();
+
+      console.log('\n' + boxen(
+        [
+          chalk.bold.green('✨ Kiteretsu is ready!'),
+          '',
+          chalk.white(`Files indexed:    ${chalk.bold.cyan(String(stats.files))}`),
+          chalk.white(`Symbols found:    ${chalk.bold.cyan(String(stats.symbols))}`),
+          chalk.white(`Dependencies:     ${chalk.bold.cyan(String(stats.edges))}`),
+          '',
+          chalk.gray('Your AI coding agents now automatically query Kiteretsu before making changes.')
+        ].join('\n'),
+        { padding: 1, margin: 1, borderStyle: 'round', borderColor: 'green' }
       ));
+
       await getKiteretsu().destroy();
-      return;
+      process.exit(0);
     } catch (error: any) {
-      spinner.fail(chalk.red('Initialization failed: ' + error.message));
-      process.exitCode = 1;
-      return;
+      progressBar.stop();
+      console.error(chalk.red('\nIndexing failed: ' + error.message));
+      await getKiteretsu().destroy();
+      process.exit(1);
     }
   });
 
+// ─── 2. BOOTSTRAP COMMAND (Mental Model) ───
+program
+  .command('bootstrap')
+  .description('Generate initial mental model of repository architecture and central modules for agents')
+  .action(async () => {
+    const spinner = ora('Compiling repository mental model...').start();
+    try {
+      const summary = await getKiteretsu().getBootstrapSummary();
+      spinner.stop();
+
+      console.log(chalk.bold.underline('\n🧠 Repository Mental Model & Orientation\n'));
+
+      console.log(chalk.bold.cyan('📊 Repository Scale:'));
+      console.log(chalk.white(`  Files:            ${chalk.bold(summary.repository.totalFiles)}`));
+      console.log(chalk.white(`  Symbols:          ${chalk.bold(summary.repository.totalSymbols)}`));
+      console.log(chalk.white(`  Dependencies:     ${chalk.bold(summary.repository.totalDependencies)}`));
+      console.log(chalk.white(`  Index Confidence: ${chalk.bold.green(summary.indexConfidence + '%')}`));
+
+      if (summary.architecture.length > 0) {
+        console.log(chalk.bold.cyan('\n🏛 Architectural Layers:'));
+        summary.architecture.forEach(layer => {
+          console.log(chalk.white(`  • ${layer}`));
+        });
+      }
+
+      if (summary.centralModules.length > 0) {
+        console.log(chalk.bold.cyan('\n⭐ Central Core Modules (High In-Degree):'));
+        summary.centralModules.forEach(m => {
+          console.log(chalk.white(`  - ${chalk.bold(m.path)} ${chalk.gray(`(${m.inDegree} dependents)`)}`));
+        });
+      }
+
+      if (summary.importantDecisions.length > 0) {
+        console.log(chalk.bold.cyan('\n💡 Active Architectural Decisions (ADRs):'));
+        summary.importantDecisions.forEach(d => {
+          console.log(chalk.white(`  • ${chalk.bold(d.title)}`));
+          console.log(chalk.gray(`    ${d.rationale}`));
+        });
+      }
+
+      if (summary.governanceRules.length > 0) {
+        console.log(chalk.bold.cyan('\n📏 Governance Rules:'));
+        summary.governanceRules.forEach(r => {
+          console.log(chalk.white(`  - ${chalk.bold(r.name)}: ${r.description}`));
+        });
+      }
+
+      console.log('');
+      await getKiteretsu().destroy();
+      return;
+    } catch (e: any) {
+      spinner.fail(chalk.red('Failed to compile bootstrap summary: ' + e.message));
+      process.exitCode = 1;
+    }
+  });
+
+// ─── 3. DOCTOR COMMAND (Diagnostics) ───
+program
+  .command('doctor')
+  .description('Run comprehensive health check across index, graph, embeddings, memory, and agent bridges')
+  .action(async () => {
+    console.log(chalk.bold.cyan('🩺 Running Kiteretsu Diagnostics...\n'));
+
+    try {
+      const diag = await getKiteretsu().runDiagnostics();
+      const agentDoctor = new AgentDoctor();
+      const agentReport = await agentDoctor.diagnose({ rootDir });
+
+      console.log(diag.databaseIntegrity ? chalk.green('✓ SQLite Database Integrity: Healthy') : chalk.red('✗ SQLite Database Integrity: Failed'));
+      console.log(diag.index.healthy ? chalk.green(`✓ Index: ${diag.index.totalFiles} files indexed`) : chalk.yellow(`⚠ Index: ${diag.index.staleFiles.length} stale files`));
+      console.log(diag.graph.healthy ? chalk.green(`✓ Code Graph: ${diag.graph.totalEdges} dependency & symbol edges`) : chalk.yellow('⚠ Code Graph: No edges found'));
+      console.log(chalk.green(`✓ Embeddings: ${diag.embeddings.provider}`));
+      console.log(chalk.green(`✓ Memory: ${diag.memory.decisionsCount} ADRs, ${diag.memory.rulesCount} Rules, ${diag.memory.tasksCount} Task logs`));
+
+      console.log(chalk.bold.cyan('\n🤖 Agent Integrations:'));
+      if (agentReport.statuses.length === 0) {
+        console.log(chalk.gray('  No agent integrations detected. Run `kiteretsu init` to set them up.'));
+      } else {
+        agentReport.statuses.forEach(s => {
+          if (s.healthy) {
+            console.log(chalk.green(`  ✓ ${s.name} integration: Healthy`));
+          } else {
+            console.log(chalk.yellow(`  ⚠ ${s.name} issues: ${s.issues.join(', ')}`));
+          }
+        });
+      }
+
+      console.log('');
+      await getKiteretsu().destroy();
+    } catch (e: any) {
+      console.error(chalk.red('Doctor check failed: ' + e.message));
+      process.exitCode = 1;
+    }
+  });
+
+// ─── 4. SYNC COMMAND (Maintenance) ───
+program
+  .command('sync')
+  .description('Update managed agent instruction sections and refresh MCP configurations')
+  .action(async () => {
+    const spinner = ora('Syncing agent integrations...').start();
+    try {
+      const updater = new AgentUpdater();
+      const result = await updater.update({ rootDir });
+      spinner.succeed(chalk.green('✨ Agent integrations synchronized successfully!'));
+
+      result.updated.forEach(u => {
+        console.log(chalk.green(`  ✓ Synced ${u.name}`));
+      });
+
+      console.log('');
+      await getKiteretsu().destroy();
+    } catch (e: any) {
+      spinner.fail(chalk.red('Sync failed: ' + e.message));
+      process.exitCode = 1;
+    }
+  });
+
+// ─── 5. EXPLAIN COMMAND (Deep Reasoning) ───
+program
+  .command('explain <target>')
+  .description('Explain why a file or symbol is designed the way it is, combining source, graph, ADRs, and tests')
+  .action(async (target) => {
+    const spinner = ora(`Analyzing target: "${target}"...`).start();
+    try {
+      const result = await getKiteretsu().explain(target);
+      spinner.stop();
+
+      console.log(chalk.bold.underline(`\n🔍 Architecture & Design Explanation for "${target}"\n`));
+      console.log(chalk.bold.cyan('Summary:'));
+      console.log(chalk.white(`  ${result.summary}`));
+
+      if (result.symbols && result.symbols.length > 0) {
+        console.log(chalk.bold.cyan('\nDeclared Symbols:'));
+        result.symbols.forEach(s => console.log(chalk.white(`  • ${s.type} ${chalk.bold(s.name)}`)));
+      }
+
+      if (result.callers && result.callers.length > 0) {
+        console.log(chalk.bold.cyan('\nInbound Callers:'));
+        result.callers.forEach(c => console.log(chalk.white(`  ← ${chalk.bold(c.callerName)} in ${c.callerFile} (${c.relation})`)));
+      }
+
+      if (result.callees && result.callees.length > 0) {
+        console.log(chalk.bold.cyan('\nOutbound Callees:'));
+        result.callees.forEach(c => console.log(chalk.white(`  → ${chalk.bold(c.calleeName)} in ${c.calleeFile} (${c.relation})`)));
+      }
+
+      if (result.dependencies && result.dependencies.length > 0) {
+        console.log(chalk.bold.cyan('\nDependencies (Imports):'));
+        result.dependencies.forEach(d => console.log(chalk.white(`  → ${d.target}`)));
+      }
+
+      if (result.consumers && result.consumers.length > 0) {
+        console.log(chalk.bold.cyan('\nConsumers (Imported By):'));
+        result.consumers.forEach(c => console.log(chalk.white(`  ← ${c.source}`)));
+      }
+
+      if (result.decisions && result.decisions.length > 0) {
+        console.log(chalk.bold.cyan('\n💡 Applicable Architectural Decisions:'));
+        result.decisions.forEach(d => console.log(chalk.white(`  • ${chalk.bold(d.title)}: ${d.rationale}`)));
+      }
+
+      if (result.rules && result.rules.length > 0) {
+        console.log(chalk.bold.cyan('\n📏 Applicable Rules:'));
+        result.rules.forEach(r => console.log(chalk.white(`  - ${r}`)));
+      }
+
+      if (result.tests && result.tests.length > 0) {
+        console.log(chalk.bold.cyan('\n🧪 Related Tests:'));
+        result.tests.forEach(t => console.log(chalk.white(`  ✓ ${t}`)));
+      }
+
+      console.log('');
+      await getKiteretsu().destroy();
+    } catch (e: any) {
+      spinner.fail(chalk.red('Explanation failed: ' + e.message));
+      process.exitCode = 1;
+    }
+  });
+
+// ─── 6. BLAST RADIUS COMMAND ───
+program
+  .command('blast-radius <target>')
+  .description('Compute risk rating and downstream impact before modifying a file or symbol')
+  .action(async (target) => {
+    const spinner = ora(`Computing blast radius for: "${target}"...`).start();
+    try {
+      const radius = await getKiteretsu().getDetailedBlastRadius(target);
+      spinner.stop();
+
+      const riskColor = radius.riskLevel === 'HIGH' ? chalk.bold.red : (radius.riskLevel === 'MEDIUM' ? chalk.bold.yellow : chalk.bold.green);
+
+      console.log(chalk.bold.underline(`\n💥 Blast Radius Analysis: ${target}\n`));
+      console.log(chalk.white(`Risk Level:           ${riskColor(radius.riskLevel)}`));
+      console.log(chalk.white(`Direct Dependents:    ${chalk.bold(String(radius.directCallersCount))}`));
+      console.log(chalk.white(`Indirect Dependents:  ${chalk.bold(String(radius.indirectCallersCount))}`));
+      console.log(chalk.white(`Related Tests:        ${chalk.bold(String(radius.testsToRun.length))}`));
+
+      if (radius.directCallers.length > 0) {
+        console.log(chalk.bold.cyan('\nDirect Callers / Importers:'));
+        radius.directCallers.slice(0, 10).forEach(d => {
+          const label = d.name ? `${d.name} (${d.file})` : d.file;
+          console.log(chalk.yellow(`  ⚡ ${label}`));
+        });
+      }
+
+      if (radius.testsToRun.length > 0) {
+        console.log(chalk.bold.green('\nTests to Run:'));
+        radius.testsToRun.slice(0, 8).forEach(t => console.log(chalk.white(`  ✓ ${t}`)));
+      }
+
+      if (radius.affectedADRs.length > 0) {
+        console.log(chalk.bold.cyan('\nAffected ADRs:'));
+        radius.affectedADRs.forEach(d => console.log(chalk.white(`  • ${d.title}`)));
+      }
+
+      console.log('');
+      await getKiteretsu().destroy();
+    } catch (e: any) {
+      spinner.fail(chalk.red('Blast radius computation failed: ' + e.message));
+      process.exitCode = 1;
+    }
+  });
+
+// ─── 7. RECORD COMMAND (Post-Change Workflow) ───
+program
+  .command('record')
+  .description('Analyze git changes, identify affected tests & ADRs, and record task outcome')
+  .action(async () => {
+    console.log(chalk.bold.cyan('🔍 Analyzing git changes...\n'));
+    try {
+      const gitAnalysis = await getKiteretsu().analyzeGitChanges();
+      if (gitAnalysis.changedFiles.length === 0) {
+        console.log(chalk.gray('No uncommitted changes detected in git workspace.'));
+        await getKiteretsu().destroy();
+        return;
+      }
+
+      console.log(chalk.bold('Changed Files:'));
+      gitAnalysis.changedFiles.forEach(f => console.log(chalk.white(`  • ${f}`)));
+
+      if (gitAnalysis.relatedTests.length > 0) {
+        console.log(chalk.bold.green('\nRecommended Tests to Run:'));
+        gitAnalysis.relatedTests.forEach(t => console.log(chalk.white(`  ✓ ${t}`)));
+      }
+
+      if (gitAnalysis.affectedADRs.length > 0) {
+        console.log(chalk.bold.cyan('\nAffected Architectural Decisions:'));
+        gitAnalysis.affectedADRs.forEach(d => console.log(chalk.white(`  💡 ${d.title}`)));
+      }
+
+      const answers = await inquirer.prompt([
+        {
+          type: 'input',
+          name: 'description',
+          message: 'Task description:',
+          default: `Modified ${gitAnalysis.changedFiles.length} files`
+        },
+        {
+          type: 'list',
+          name: 'outcome',
+          message: 'Task outcome:',
+          choices: ['success', 'failure']
+        },
+        {
+          type: 'input',
+          name: 'notes',
+          message: 'Developer notes / lessons learned:'
+        }
+      ]);
+
+      await getKiteretsu().recordTaskOutcome(answers.description, 'git-record', answers.outcome, answers.notes);
+      console.log(chalk.green('\n✨ Task outcome and learnings recorded in Kiteretsu!'));
+      await getKiteretsu().destroy();
+    } catch (e: any) {
+      console.error(chalk.red('Record failed: ' + e.message));
+      process.exitCode = 1;
+    }
+  });
+
+// ─── 8. INDEX COMMAND ───
 program
   .command('index')
   .description('Index the codebase and build memory')
@@ -138,6 +468,7 @@ program
     }
   });
 
+// ─── 9. CONTEXT COMMAND ───
 program
   .command('context <task>')
   .description('Generate a Context Pack for a specific task')
@@ -231,7 +562,7 @@ program
           pack.warnings.forEach(w => console.log(chalk.yellow(`  ⚠ ${w}`)));
         }
 
-        console.log(''); // trailing newline
+        console.log('');
       }
       await getKiteretsu().destroy();
       return;
@@ -242,12 +573,13 @@ program
     }
   });
 
+// ─── 10. DECISIONS & RULES COMMANDS ───
 program
   .command('record-decision <title> <rationale>')
   .description('Record an architectural decision (ADR)')
   .option('-a, --alternatives <alternatives>', 'Alternatives considered', '')
   .option('-p, --paths <paths>', 'Comma-separated affected paths or globs', '')
-  .option('-s, --status <status>', 'Decision status (active, deprecated, superseded)', 'active')
+  .option('-s, --status <status>', 'Decision status (proposed, accepted, superseded, deprecated, rejected, active)', 'accepted')
   .action(async (title, rationale, options) => {
     const spinner = ora('Recording decision...').start();
     try {
@@ -274,7 +606,7 @@ program
       } else {
         console.log(chalk.bold.underline('\n💡 Architectural Decisions:\n'));
         for (const d of decisions) {
-          const statusBadge = d.status === 'active' ? chalk.green('[active]') : chalk.yellow(`[${d.status}]`);
+          const statusBadge = d.status === 'active' || d.status === 'accepted' ? chalk.green(`[${d.status}]`) : chalk.yellow(`[${d.status}]`);
           console.log(`${statusBadge} ${chalk.bold.white(d.title)}`);
           console.log(chalk.gray(`  Rationale: ${d.rationale}`));
           if (d.alternatives_considered) {
@@ -327,7 +659,7 @@ program
       await getKiteretsu().destroy();
       return;
     } catch (error: any) {
-      spinner.fail(chalk.red('Failed to record task: ' + error.message));
+      spinner.fail(chalk.red('Failed to record task outcome: ' + error.message));
       process.exitCode = 1;
       return;
     }
@@ -336,468 +668,41 @@ program
 program
   .command('search <query>')
   .description('Semantic search across the codebase')
-  .action(async (query) => {
+  .option('-l, --limit <number>', 'Number of results', '5')
+  .action(async (query, options) => {
     const spinner = ora(`Searching for "${query}"...`).start();
     try {
-      const results = await getKiteretsu().semanticSearch(query);
+      const results = await getKiteretsu().semanticSearch(query, parseInt(options.limit, 10));
       spinner.stop();
-      
-      if (!results || results.length === 0) {
-        console.log(chalk.yellow('No results found.'));
-        return;
+
+      console.log(chalk.bold.underline(`\n🔎 Search Results for: "${query}"\n`));
+      if (results.length === 0) {
+        console.log(chalk.yellow('No matches found.'));
+      } else {
+        results.forEach((r, idx) => {
+          const simPct = (Math.max(0, 1 - r.distance) * 100).toFixed(0);
+          console.log(`${chalk.cyan(String(idx + 1) + '.')} ${chalk.bold.white(r.path)} ${chalk.green(`(${simPct}% similarity)`)}`);
+          if (r.summary) {
+            console.log(chalk.gray(`   ${r.summary}`));
+          }
+          console.log('');
+        });
       }
-
-      console.log(chalk.cyan(`\nTop semantic matches for: "${query}"`));
-      console.log(chalk.gray(`(Higher percentage means stronger conceptual similarity)\n`));
-
-      results.forEach((res, i) => {
-        const percentage = Math.max(0, Math.round((1 - res.distance) * 100));
-        const color = percentage > 50 ? chalk.green : (percentage > 25 ? chalk.yellow : chalk.white);
-        
-        console.log(`${chalk.white(i + 1 + '.')} ${chalk.bold(res.path)} ${color(`[${percentage}% Match]`)}`);
-      });
-      console.log('');
       await getKiteretsu().destroy();
     } catch (e: any) {
-      spinner.fail(chalk.red(`Error: ${e.message}`));
-    }
-  });
-
-program
-  .command('tests')
-  .description('Find and optionally run tests related to specific files')
-  .option('-f, --files <files...>', 'Source files to find tests for')
-  .option('-r, --run', 'Try to run the tests automatically', false)
-  .action(async (options) => {
-    if (!options.files || options.files.length === 0) {
-      console.log(chalk.red('❌ Please provide at least one file using --files'));
+      spinner.fail(chalk.red('Search failed: ' + e.message));
       process.exitCode = 1;
-      return;
-    }
-
-    const spinner = ora('Finding related tests...').start();
-    try {
-      const tests = await getKiteretsu().getRelatedTests(options.files);
-      spinner.stop();
-
-      if (tests.length === 0) {
-        console.log(chalk.yellow('\n🔍 No related tests found for the specified files.'));
-        console.log(chalk.gray('Kiteretsu looks for files containing .test. or .spec. that import your changed files.'));
-      } else {
-        console.log(chalk.bold.green('\n🧪 Related Tests Found:'));
-        tests.forEach(t => console.log(chalk.white(`  ✓ ${t}`)));
-
-        if (options.run) {
-          console.log(chalk.cyan('\n🚀 Automatic test execution is coming soon!'));
-          console.log(chalk.gray('For now, please run these tests manually using your preferred test runner.'));
-        }
-      }
-      await getKiteretsu().destroy();
-      return;
-    } catch (error: any) {
-      spinner.fail(chalk.red('Failed to find tests: ' + error.message));
-      process.exitCode = 1;
-      return;
-    }
-  });
-
-program
-  .command('blast-radius <file>')
-  .description('Calculate the blast radius of a specific file')
-  .action(async (file) => {
-    const spinner = ora(`Calculating blast radius for: ${file}...`).start();
-    try {
-      const fullPath = path.resolve(rootDir, file);
-      const analyzer = await getKiteretsu().getAnalyzer();
-      const radius = await analyzer.getBlastRadius(fullPath);
-      spinner.stop();
-
-      // Normalize paths relative to rootDir for easier testing
-      const normalizedRadius = radius.map((f: string) => {
-        if (f.startsWith('UNRESOLVABLE: ')) {
-          return `UNRESOLVABLE: ${path.relative(rootDir, f.slice('UNRESOLVABLE: '.length)).replace(/\\/g, '/')}`;
-        }
-        return path.relative(rootDir, f).replace(/\\/g, '/');
-      });
-      
-      console.log(JSON.stringify({
-        file: path.relative(rootDir, fullPath).replace(/\\/g, '/'),
-        blast_radius: normalizedRadius
-      }, null, 2));
-
-      await getKiteretsu().destroy();
-      return;
-    } catch (error: any) {
-      spinner.fail(chalk.red('Blast radius calculation failed: ' + error.message));
-      process.exitCode = 1;
-      return;
-    }
-  });
-
-
-
-program
-  .command('mcp')
-  .description('Start the Kiteretsu MCP server')
-  .action(async () => {
-    try {
-      const { runMcpServer } = await import('@kiteretsu/mcp-server');
-      await runMcpServer(rootDir);
-    } catch (error: any) {
-      console.error(chalk.red('MCP Server failed: ' + error.message));
-      process.exitCode = 1;
-      return;
     }
   });
 
 program
   .command('watch')
-  .description('Start the self-healing memory watcher')
+  .description('Watch codebase for changes and maintain index in real-time')
   .action(async () => {
+    console.log(chalk.cyan('👀 Starting Kiteretsu code watcher...'));
     const watcher = new CodeWatcher(getKiteretsu());
     await watcher.start(rootDir);
-  });
-
-program
-  .command('integrate [target]')
-  .alias('install')
-  .description('Install Kiteretsu hooks for specific agents (claude, cursor, aider, vscode, copilot, trae, kiro, antigravity, opencode, openclaude, openclaw, etc.)')
-  .action(async (target) => {
-    const targetDir = rootDir;
-    const protocolMarker = '# 📦 Kiteretsu Intelligence Layer';
-    const detailedProtocol = `
-## 📖 THE KITERETSU PROTOCOL
-You are operating within a codebase enhanced by **Kiteretsu**, an externalized spatial intelligence and cognitive memory layer. 
-
-**MANDATORY BEHAVIORAL INSTRUCTION:**
-Before attempting ANY task, refactor, or architectural design query, you **MUST** consult Kiteretsu. Do NOT rely on blind directory traversal, grep loops, or internal memory of the project structure. Kiteretsu is the source of truth for dependencies, architectural rules, and blast radius.
-
-### 🛠️ Required Workflow
-
-1. **Compile Context First**
-   - BEFORE planning or editing, run:
-     \`kiteretsu context "<detailed description of task>"\`
-   - Review the compiled Context Pack. Pay close attention to the **Read First** files (must be read first) and **Blast Radius** files (which will be impacted by your changes).
-
-2. **Strict Architectural Governance**
-   - Check and comply with all architectural rules in the **Rules to Follow** section.
-   - To record a new project guardrail or architectural convention for future agents:
-     \`kiteretsu record-rule <rule-name> <description> --scope <global|path|language> --value <scope-value>\`
-
-3. **Verify and Run Tests**
-   - To find the exact test suites covering files you modified, run:
-     \`kiteretsu tests --files <file1> <file2>\`
-   - Run the identified tests to verify that no downstream dependencies inside the blast radius are broken.
-
-4. **Offload Task Memory (Episodic Recall)**
-   - Upon completing the task and confirming successful verification, record the episodic outcome so subsequent agents learn from your execution details:
-     \`kiteretsu record-task "<task description>" success --notes "<key implementation notes or speedups>"\`
-`;
-
-    const ensureKiteretsuLayer = async (filePath: string, content: string) => {
-      let existing = '';
-      const exists = await fs.pathExists(filePath);
-      if (exists) {
-        existing = await fs.readFile(filePath, 'utf8');
-      }
-
-      if (existing.includes(protocolMarker)) {
-        return false;
-      } else {
-        const prefix = existing ? (existing.endsWith('\n') ? '' : '\n') : '';
-        await fs.outputFile(filePath, existing + prefix + `\n${protocolMarker}\n${content}\n`);
-        return true;
-      }
-    };
-
-    const runIntegration = async (targetName: string): Promise<string[]> => {
-      const createdFiles: string[] = [];
-      const normalized = targetName.toLowerCase();
-
-      switch (normalized) {
-        case 'git': {
-          if (!await fs.pathExists(path.join(targetDir, '.git'))) {
-            throw new Error('Not a git repository.');
-          }
-           const hookContent = `#!/bin/sh\n# Kiteretsu Auto-Index Hook\n# Keeps your codebase memory fresh in the background on commit or pull/merge\n\nif [ -f "./node_modules/.bin/kiteretsu" ]; then\n  KITERETSU_DISABLE_EMBEDDINGS=1 ./node_modules/.bin/kiteretsu index > /dev/null 2>&1 &\nelif command -v kiteretsu >/dev/null 2>&1; then\n  KITERETSU_DISABLE_EMBEDDINGS=1 kiteretsu index > /dev/null 2>&1 &\nelse\n  KITERETSU_DISABLE_EMBEDDINGS=1 npx kiteretsu index > /dev/null 2>&1 &\nfi\n`;
-          const commitHook = path.join(targetDir, '.git', 'hooks', 'post-commit');
-          const mergeHook = path.join(targetDir, '.git', 'hooks', 'post-merge');
-          
-          await fs.outputFile(commitHook, hookContent, { mode: 0o755 });
-          await fs.outputFile(mergeHook, hookContent, { mode: 0o755 });
-          try {
-            await fs.chmod(commitHook, 0o755);
-            await fs.chmod(mergeHook, 0o755);
-          } catch {}
-          createdFiles.push('.git/hooks/post-commit', '.git/hooks/post-merge');
-          break;
-        }
-        case 'claude':
-        case 'claude-code': {
-          const claudePath = path.join(targetDir, 'CLAUDE.md');
-          await ensureKiteretsuLayer(claudePath, detailedProtocol);
-          createdFiles.push('CLAUDE.md');
-
-          const claudeSettingsPath = path.join(targetDir, '.claude', 'settings.json');
-          let claudeSettings: any = { hooks: {} };
-          if (await fs.pathExists(claudeSettingsPath)) {
-            try {
-              claudeSettings = await fs.readJson(claudeSettingsPath);
-            } catch {}
-          }
-          claudeSettings.hooks = claudeSettings.hooks || {};
-          claudeSettings.hooks.PreToolUse = claudeSettings.hooks.PreToolUse || {};
-          claudeSettings.hooks.PreToolUse["Glob,Grep"] = "If a Kiteretsu memory exists, read the Context Pack before searching raw files.";
-          await fs.outputJson(claudeSettingsPath, claudeSettings, { spaces: 2 });
-          createdFiles.push('.claude/settings.json');
-          break;
-        }
-        case 'cursor': {
-          const cursorrulesPath = path.join(targetDir, '.cursorrules');
-          await ensureKiteretsuLayer(cursorrulesPath, detailedProtocol);
-          createdFiles.push('.cursorrules');
-
-          const mdcPath = path.join(targetDir, '.cursor', 'rules', 'kiteretsu.mdc');
-          const mdcContent = `---\ndescription: Kiteretsu Codebase Intelligence and Context Compilation Protocol\nglobs: *\nalwaysApply: true\n---\n${protocolMarker}\n${detailedProtocol}`;
-          await fs.outputFile(mdcPath, mdcContent);
-          createdFiles.push('.cursor/rules/kiteretsu.mdc');
-          break;
-        }
-        case 'windsurf':
-        case 'cascade': {
-          const wsPath = path.join(targetDir, '.windsurfrules');
-          await ensureKiteretsuLayer(wsPath, detailedProtocol);
-          createdFiles.push('.windsurfrules');
-          break;
-        }
-        case 'vscode':
-        case 'vscode-copilot': {
-          const vscodePath = path.join(targetDir, '.github', 'copilot-instructions.md');
-          await ensureKiteretsuLayer(vscodePath, detailedProtocol);
-          createdFiles.push('.github/copilot-instructions.md');
-          break;
-        }
-        case 'aider': {
-          const aiderInstructions = path.join(targetDir, '.aider.instructions.md');
-          await ensureKiteretsuLayer(aiderInstructions, detailedProtocol);
-          createdFiles.push('.aider.instructions.md');
-
-          const aiderConf = path.join(targetDir, '.aider.conf.yml');
-          let existingConf = '';
-          if (await fs.pathExists(aiderConf)) {
-            existingConf = await fs.readFile(aiderConf, 'utf8');
-          }
-          if (!existingConf.includes('instructions:')) {
-            const extra = `\n# Aider configuration for Kiteretsu\ninstructions: .aider.instructions.md\n`;
-            await fs.outputFile(aiderConf, existingConf + extra);
-          }
-          createdFiles.push('.aider.conf.yml');
-          break;
-        }
-        case 'opencode': {
-          const ocPath = path.join(targetDir, 'AGENTS.md');
-          await ensureKiteretsuLayer(ocPath, detailedProtocol);
-          createdFiles.push('AGENTS.md');
-
-          const pluginPath = path.join(targetDir, '.opencode', 'plugins', 'kiteretsu.js');
-          const pluginContent = `module.exports = {\n  executeBefore: ['bash'],\n  run: () => 'Before starting your task, run kiteretsu context to retrieve spatial codebase mapping and active governance rules.'\n};\n`;
-          await fs.outputFile(pluginPath, pluginContent);
-          createdFiles.push('.opencode/plugins/kiteretsu.js');
-
-          const ocSettingsPath = path.join(targetDir, 'opencode.json');
-          let ocSettings: any = { plugins: [] };
-          if (await fs.pathExists(ocSettingsPath)) {
-            try {
-              ocSettings = await fs.readJson(ocSettingsPath);
-            } catch {}
-          }
-          ocSettings.plugins = ocSettings.plugins || [];
-          if (!ocSettings.plugins.includes('./.opencode/plugins/kiteretsu.js')) {
-            ocSettings.plugins.push('./.opencode/plugins/kiteretsu.js');
-          }
-          await fs.outputJson(ocSettingsPath, ocSettings, { spaces: 2 });
-          createdFiles.push('opencode.json');
-          break;
-        }
-        case 'openclaude': {
-          const oclaudePath = path.join(targetDir, 'OPENCLAUDE.md');
-          await ensureKiteretsuLayer(oclaudePath, detailedProtocol);
-          createdFiles.push('OPENCLAUDE.md');
-
-          const agentPath = path.join(targetDir, 'AGENTS.md');
-          await ensureKiteretsuLayer(agentPath, detailedProtocol);
-          createdFiles.push('AGENTS.md');
-          break;
-        }
-        case 'openclaw':
-        case 'claw': {
-          const clawrulesPath = path.join(targetDir, '.clawrules');
-          await ensureKiteretsuLayer(clawrulesPath, detailedProtocol);
-          createdFiles.push('.clawrules');
-
-          const agentPath = path.join(targetDir, 'AGENTS.md');
-          await ensureKiteretsuLayer(agentPath, detailedProtocol);
-          createdFiles.push('AGENTS.md');
-          break;
-        }
-        case 'trae':
-        case 'trae-cn': {
-          const traePath = path.join(targetDir, '.traerules');
-          await ensureKiteretsuLayer(traePath, detailedProtocol);
-          createdFiles.push('.traerules');
-
-          const agentPath = path.join(targetDir, 'AGENTS.md');
-          await ensureKiteretsuLayer(agentPath, detailedProtocol);
-          createdFiles.push('AGENTS.md');
-          break;
-        }
-        case 'gemini': {
-          const gemPath = path.join(targetDir, 'GEMINI.md');
-          await ensureKiteretsuLayer(gemPath, detailedProtocol);
-          createdFiles.push('GEMINI.md');
-
-          const skillPath = path.join(targetDir, '.gemini', 'skills', 'kiteretsu', 'SKILL.md');
-          await ensureKiteretsuLayer(skillPath, detailedProtocol);
-          createdFiles.push('.gemini/skills/kiteretsu/SKILL.md');
-
-          const gemSettingsPath = path.join(targetDir, '.gemini', 'settings.json');
-          let gemSettings: any = { hooks: {} };
-          if (await fs.pathExists(gemSettingsPath)) {
-            try {
-              gemSettings = await fs.readJson(gemSettingsPath);
-            } catch {}
-          }
-          gemSettings.hooks = gemSettings.hooks || {};
-          gemSettings.hooks.BeforeTool = gemSettings.hooks.BeforeTool || {};
-          gemSettings.hooks.BeforeTool["file-read"] = "Read Kiteretsu context before reading raw files.";
-          await fs.outputJson(gemSettingsPath, gemSettings, { spaces: 2 });
-          createdFiles.push('.gemini/settings.json');
-          break;
-        }
-        case 'kiro': {
-          const kiroSkill = path.join(targetDir, '.kiro', 'skills', 'kiteretsu', 'SKILL.md');
-          await ensureKiteretsuLayer(kiroSkill, detailedProtocol);
-          createdFiles.push('.kiro/skills/kiteretsu/SKILL.md');
-
-          const kiroSteering = path.join(targetDir, '.kiro', 'steering', 'kiteretsu.md');
-          const steeringContent = `inclusion: always\n---\n${protocolMarker}\n${detailedProtocol}`;
-          await fs.outputFile(kiroSteering, steeringContent);
-          createdFiles.push('.kiro/steering/kiteretsu.md');
-          break;
-        }
-        case 'antigravity':
-        case 'google-antigravity': {
-          const antiRule = path.join(targetDir, '.agents', 'rules', 'kiteretsu.md');
-          const ruleContent = `---\ndescription: Kiteretsu Codebase Intelligence\nglobs: **/*\n---\n${protocolMarker}\n${detailedProtocol}`;
-          await fs.outputFile(antiRule, ruleContent);
-          createdFiles.push('.agents/rules/kiteretsu.md');
-
-          const antiWorkflow = path.join(targetDir, '.agents', 'workflows', 'kiteretsu.md');
-          const workflowContent = `---\nname: Kiteretsu Context\ndescription: Get codebase context for a task\ntrigger:\n  slash_command: kiteretsu\n  arguments:\n    task:\n      description: The task you are working on\n      required: true\n---\n\n# Workflow\n1. Run \`kiteretsu context "{{task}}"\`\n2. Display the result to the user.`;
-          await fs.outputFile(antiWorkflow, workflowContent);
-          createdFiles.push('.agents/workflows/kiteretsu.md');
-          break;
-        }
-        case 'codex': {
-          const codexPath = path.join(targetDir, 'AGENTS.md');
-          await ensureKiteretsuLayer(codexPath, detailedProtocol);
-          createdFiles.push('AGENTS.md');
-
-          const codexHooks = path.join(targetDir, '.codex', 'hooks.json');
-          await fs.outputJson(codexHooks, {
-            PreToolUse: { "Bash": "Read Kiteretsu context pack before executing bash commands to search." }
-          }, { spaces: 2 });
-          createdFiles.push('.codex/hooks.json');
-          break;
-        }
-        case 'copilot': {
-          const copilotPath = path.join(os.homedir(), '.copilot', 'skills', 'kiteretsu', 'SKILL.md');
-          await ensureKiteretsuLayer(copilotPath, detailedProtocol);
-          createdFiles.push('~/.copilot/skills/kiteretsu/SKILL.md');
-          break;
-        }
-        default:
-          throw new Error(`Unknown target: ${targetName}`);
-      }
-
-      return createdFiles;
-    };
-
-    try {
-      if (!target) {
-        const response = await inquirer.prompt([
-          {
-            type: 'list',
-            name: 'target',
-            message: 'Which AI coding agent or IDE would you like to integrate with Kiteretsu?',
-            choices: [
-              { name: '✨ All Common Integrations (Cursor, Claude Code, Windsurf, Git Hooks)', value: 'common' },
-              { name: '🌟 All Integrations (Installs every supported agent configuration)', value: 'all' },
-              { name: '🤖 Claude Code (CLAUDE.md, settings.json)', value: 'claude' },
-              { name: '🚀 Cursor IDE (.cursorrules, .cursor/rules/kiteretsu.mdc)', value: 'cursor' },
-              { name: '🌊 Windsurf / Cascade (.windsurfrules)', value: 'windsurf' },
-              { name: '💻 VS Code Copilot (.github/copilot-instructions.md)', value: 'vscode' },
-              { name: '🐙 Git Hooks (Auto-reindex on commit & pull)', value: 'git' },
-              { name: '🧙 Aider (.aider.instructions.md, .aider.conf.yml)', value: 'aider' },
-              { name: '🧬 OpenCode (AGENTS.md, opencode.json integration)', value: 'opencode' },
-              { name: '🪐 OpenClaude (OPENCLAUDE.md, AGENTS.md)', value: 'openclaude' },
-              { name: '⚔️ OpenClaw / Claw (.clawrules, AGENTS.md)', value: 'openclaw' },
-              { name: '🔮 Trae (.traerules, AGENTS.md)', value: 'trae' },
-              { name: '🟢 Gemini (GEMINI.md, SKILL.md, settings.json)', value: 'gemini' },
-              { name: '🎯 Kiro (SKILL.md, steering/kiteretsu.md)', value: 'kiro' },
-              { name: '🛸 Antigravity (rules/kiteretsu.md, workflows)', value: 'antigravity' },
-              { name: '🚪 Cancel / Exit', value: 'exit' }
-            ]
-          }
-        ]);
-        target = response.target;
-        if (target === 'exit') {
-          console.log(chalk.gray('  Installation cancelled.'));
-          return;
-        }
-      }
-
-      const spinner = ora('Setting up integrations...').start();
-      const finalFiles: string[] = [];
-
-      let targetsToRun: string[] = [];
-      if (target.toLowerCase() === 'common') {
-        targetsToRun = ['cursor', 'claude', 'windsurf', 'aider', 'git'];
-      } else if (target.toLowerCase() === 'all') {
-        targetsToRun = [
-          'cursor', 'claude', 'windsurf', 'aider', 'git', 
-          'opencode', 'openclaude', 'openclaw', 'trae', 
-          'gemini', 'kiro', 'antigravity', 'codex', 'vscode', 'copilot'
-        ];
-      } else {
-        targetsToRun = [target];
-      }
-
-      for (const t of targetsToRun) {
-        try {
-          const files = await runIntegration(t);
-          finalFiles.push(...files);
-        } catch (err: any) {
-          console.log(chalk.yellow(`\n  ⚠️ Skipping '${t}': ${err.message}`));
-        }
-      }
-
-      spinner.succeed(chalk.green('✨ Kiteretsu successfully integrated!'));
-
-      if (finalFiles.length > 0) {
-        console.log('\n' + boxen(
-          chalk.bold.cyan('📂 Created/Updated Files:') + '\n' +
-          finalFiles.map(f => chalk.white(`  ✓ ${f}`)).join('\n') + '\n\n' +
-          chalk.green('🚀 Workflow Ready!') + '\n' +
-          chalk.gray('Your AI agents will now intercept and run Kiteretsu to retrieve spatial context and execute safe, governed refactors.'),
-          { padding: 1, borderStyle: 'round', borderColor: 'green', margin: 1 }
-        ));
-      } else {
-        console.log(chalk.yellow('\n  No files were updated. Everything is already up to date.'));
-      }
-    } catch (e: any) {
-      console.log(chalk.red(`❌ Failed to install integration: ${e.message}`));
-    }
+    console.log(chalk.green('✓ Watcher active. Press Ctrl+C to stop.'));
   });
 
 program.parse(process.argv);

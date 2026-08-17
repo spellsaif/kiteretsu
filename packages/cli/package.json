@@ -11,6 +11,7 @@
     "dev": "tsx watch src/index.ts"
   },
   "dependencies": {
+    "@kiteretsu/agent-bridge": "workspace:*",
     "@kiteretsu/core": "workspace:*",
     "@kiteretsu/mcp-server": "workspace:*",
     "boxen": "^7.1.1",

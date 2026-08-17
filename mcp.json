@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "kiteretsu": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@kiteretsu/mcp-server"
+      ],
+      "env": {}
+    }
+  }
+}

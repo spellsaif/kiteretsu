@@ -58,3 +58,17 @@ Before answering ANY questions about architecture, dependencies, or blast radius
 4. **Governance**: Use `kiteretsu record-rule <name> <description>` to save architectural rules. (DO NOT just write them in markdown files; use the tool so they can be enforced).
 5. **Learn**: Record task outcomes using `kiteretsu record-task "<task>" <success|failure>`.
 
+<!-- KITERETSU:START -->
+# Kiteretsu Intelligence Bridge (Generic MCP Agent / AGENTS.md)
+
+This repository uses Kiteretsu to maintain a continuous Code Intelligence Graph and Memory Layer.
+
+## 🧭 Behavioral Protocol
+1. **Context First**: Before planning or making changes, query Kiteretsu for relevant context, symbols, and blast radius:
+   - Use MCP tool `kiteretsu_context` (or CLI `kiteretsu context "<task>"`)
+   - Read the recommended `read_first` files and obey scoped architectural rules.
+2. **Check Blast Radius**: Before high-impact refactors, inspect callers & callees with `kiteretsu_blast_radius`.
+3. **Verify**: Run related tests suggested by `kiteretsu_tests` or `kiteretsu context`.
+4. **Preserve Decisions**: After significant architectural changes, record the rationale in Kiteretsu via `kiteretsu_record_decision` or `kiteretsu record-decision`.
+5. **Record Outcome**: After completing a task, record the result with `kiteretsu_record_task` to enrich repository memory.
+<!-- KITERETSU:END -->
