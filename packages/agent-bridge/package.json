@@ -1,0 +1,22 @@
+{
+  "name": "@kiteretsu/agent-bridge",
+  "version": "0.1.0",
+  "description": "Agent detection, MCP configuration, and managed instruction bridges for AI coding agents",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "fs-extra": "^11.2.0"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.2"
+  }
+}
