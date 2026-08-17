@@ -11,12 +11,18 @@ function debugLog(msg: string) {
   try { fs.appendFileSync(LOG_PATH, msg + '\n'); } catch {}
 }
 
+export interface SymbolRelation {
+  targetName: string;
+  kind: 'calls' | 'references' | 'extends' | 'implements';
+}
+
 export interface SymbolInfo {
   name: string;
   type: 'function' | 'class' | 'interface' | 'method' | 'variable' | 'struct' | 'module';
   startLine: number;
   endLine: number;
   docstring?: string;
+  relations?: SymbolRelation[];
 }
 
 export interface ImportInfo {
@@ -29,13 +35,13 @@ export interface ImportInfo {
 // Maps file extensions to their WASM grammar file name and query definitions.
 // This is the single source of truth for all language support.
 
-interface LanguageConfig {
+export interface LanguageConfig {
   wasmFile: string;      // Filename inside tree-sitter-wasms/out/
   symbolQuery: string;   // Tree-sitter S-expression for symbol extraction
   importQuery: string;   // Tree-sitter S-expression for import extraction
 }
 
-const LANGUAGE_CONFIG: Record<string, LanguageConfig> = {
+export const LANGUAGE_CONFIG: Record<string, LanguageConfig> = {
   // ── TypeScript / JavaScript ─────────────────────────────────────────────────
   '.ts': {
     wasmFile: 'tree-sitter-typescript.wasm',
@@ -351,6 +357,8 @@ const LANGUAGE_CONFIG: Record<string, LanguageConfig> = {
   },
 };
 
+export const SUPPORTED_EXTENSIONS: string[] = Object.keys(LANGUAGE_CONFIG);
+
 // ─── Parser Implementation ───────────────────────────────────────────────────
 
 export class CodeParser {
@@ -591,6 +599,15 @@ export class CodeParser {
       debugLog(`[Parser] Deep parse failed for ${filePath}: ${e.message}`);
     } finally {
       if (tree) tree.delete();
+    }
+
+    // 3. Extract Symbol Relations (Calls, Inheritance, Implementations)
+    const contentLines = content.split('\n');
+    for (const sym of symbols) {
+      const start = Math.max(0, sym.startLine - 1);
+      const end = Math.min(contentLines.length, Math.max(sym.endLine || sym.startLine, sym.startLine + 30));
+      const body = contentLines.slice(start, end).join('\n');
+      sym.relations = extractSymbolRelations(body, sym.name);
     }
 
     return { symbols, imports };
@@ -1176,4 +1193,64 @@ export class CodeParser {
     if (captureName.includes('type')) return 'class';
     return 'variable';
   }
+}
+
+const NON_CALL_KEYWORDS = new Set([
+  'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'catch', 'finally',
+  'return', 'throw', 'typeof', 'instanceof', 'sizeof', 'new', 'import', 'export',
+  'from', 'as', 'function', 'class', 'interface', 'struct', 'type', 'const', 'let',
+  'var', 'match', 'when', 'pub', 'fn', 'def', 'async', 'await', 'try', 'except',
+  'require', 'use', 'package', 'mod', 'crate', 'self', 'super'
+]);
+
+export function extractSymbolRelations(bodyText: string, symbolName?: string): SymbolRelation[] {
+  const relations: SymbolRelation[] = [];
+  const seen = new Set<string>();
+
+  if (!bodyText) return relations;
+
+  // 1. Inheritance: extends SuperClass
+  const extendsMatch = bodyText.match(/\bextends\s+([A-Za-z_][A-Za-z0-9_]*)/);
+  if (extendsMatch && extendsMatch[1]) {
+    const targetName = extendsMatch[1];
+    if (targetName !== symbolName) {
+      relations.push({ targetName, kind: 'extends' });
+      seen.add(`extends:${targetName}`);
+    }
+  }
+
+  // 2. Implementation: implements InterfaceA, InterfaceB
+  const implementsMatch = bodyText.match(/\bimplements\s+([^{]+)/);
+  if (implementsMatch && implementsMatch[1]) {
+    const ifaces = implementsMatch[1].split(',').map(s => s.trim().split(/\s+/)[0]).filter(Boolean);
+    for (const iface of ifaces) {
+      if (iface !== symbolName && !seen.has(`implements:${iface}`)) {
+        relations.push({ targetName: iface, kind: 'implements' });
+        seen.add(`implements:${iface}`);
+      }
+    }
+  }
+
+  // Rust trait impl: impl Trait for Struct
+  const rustImplMatch = bodyText.match(/\bimpl(?:\s*<[^>]+>)?\s+([A-Za-z_][A-Za-z0-9_]*)\s+for\s+([A-Za-z_][A-Za-z0-9_]*)/);
+  if (rustImplMatch) {
+    const traitName = rustImplMatch[1];
+    if (traitName !== symbolName && !seen.has(`implements:${traitName}`)) {
+      relations.push({ targetName: traitName, kind: 'implements' });
+      seen.add(`implements:${traitName}`);
+    }
+  }
+
+  // 3. Calls: funcName(...) or object.funcName(...) or Module::funcName(...)
+  const callRegex = /\b([A-Za-z_][A-Za-z0-9_]*)\s*\(/g;
+  let match: RegExpExecArray | null;
+  while ((match = callRegex.exec(bodyText)) !== null) {
+    const callee = match[1];
+    if (!NON_CALL_KEYWORDS.has(callee) && callee !== symbolName && !seen.has(`calls:${callee}`)) {
+      relations.push({ targetName: callee, kind: 'calls' });
+      seen.add(`calls:${callee}`);
+    }
+  }
+
+  return relations;
 }
