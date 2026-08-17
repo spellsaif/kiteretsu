@@ -161,10 +161,21 @@ program
         if (pack.read_first.length > 0) {
           console.log(chalk.blue('\n📁 Read First:'));
           pack.read_first.forEach((f: any) => {
-            console.log(chalk.white(`  - ${f.path}`));
+            const confStr = f.confidence ? ` ${chalk.green(`(${(f.confidence * 100).toFixed(0)}% confidence)`)}` : '';
+            const signalsStr = f.signals && f.signals.length > 0 ? ` ${chalk.gray(`[${f.signals.join(', ')}]`)}` : '';
+            console.log(chalk.white(`  - ${f.path}${confStr}${signalsStr}`));
             if (f.summary && !f.summary.toLowerCase().includes('no summary')) {
               console.log(chalk.gray(`    ${f.summary}`));
             }
+          });
+        }
+
+        // Optional Read
+        if (pack.optional_read && pack.optional_read.length > 0) {
+          console.log(chalk.blue('\n📄 Optional Context:'));
+          pack.optional_read.forEach((f: any) => {
+            const confStr = f.confidence ? ` ${chalk.gray(`(${(f.confidence * 100).toFixed(0)}%)`)}` : '';
+            console.log(chalk.white(`  - ${f.path}${confStr}`));
           });
         }
 
@@ -181,6 +192,30 @@ program
           console.log(chalk.green('\n🧪 Tests to Run:'));
           pack.tests_to_run.forEach((t: string) => {
             console.log(chalk.white(`  ✓ ${t}`));
+          });
+        }
+
+        // Decisions (ADRs)
+        if (pack.decisions && pack.decisions.length > 0) {
+          console.log(chalk.cyan('\n💡 Architectural Decisions:'));
+          pack.decisions.forEach(d => {
+            console.log(chalk.white(`  • ${chalk.bold(d.title)}`));
+            console.log(chalk.gray(`    ${d.rationale}`));
+            if (d.affected_paths && d.affected_paths.length > 0) {
+              console.log(chalk.gray(`    Scope: ${d.affected_paths.join(', ')}`));
+            }
+          });
+        }
+
+        // Relevant Past Tasks & Episodic Memory
+        if (pack.past_tasks && pack.past_tasks.length > 0) {
+          console.log(chalk.blue('\n🧠 Relevant Past Tasks & Learnings:'));
+          pack.past_tasks.forEach(t => {
+            const outcomeColor = t.outcome === 'success' ? chalk.green('✓') : chalk.red('✗');
+            console.log(chalk.white(`  ${outcomeColor} ${t.description}`));
+            if (t.notes) {
+              console.log(chalk.gray(`    Note: ${t.notes}`));
+            }
           });
         }
 
@@ -202,6 +237,59 @@ program
       return;
     } catch (error: any) {
       spinner.fail(chalk.red('Context compilation failed: ' + error.message));
+      process.exitCode = 1;
+      return;
+    }
+  });
+
+program
+  .command('record-decision <title> <rationale>')
+  .description('Record an architectural decision (ADR)')
+  .option('-a, --alternatives <alternatives>', 'Alternatives considered', '')
+  .option('-p, --paths <paths>', 'Comma-separated affected paths or globs', '')
+  .option('-s, --status <status>', 'Decision status (active, deprecated, superseded)', 'active')
+  .action(async (title, rationale, options) => {
+    const spinner = ora('Recording decision...').start();
+    try {
+      const paths = options.paths ? options.paths.split(',').map((p: string) => p.trim()) : [];
+      await getKiteretsu().recordDecision(title, rationale, options.alternatives, paths, options.status);
+      spinner.succeed(chalk.green('✨ Decision recorded!'));
+      await getKiteretsu().destroy();
+      return;
+    } catch (error: any) {
+      spinner.fail(chalk.red('Failed to record decision: ' + error.message));
+      process.exitCode = 1;
+      return;
+    }
+  });
+
+program
+  .command('decisions')
+  .description('List all architectural decision records (ADRs)')
+  .action(async () => {
+    try {
+      const decisions = await getKiteretsu().getAllDecisions();
+      if (decisions.length === 0) {
+        console.log(chalk.gray('No architectural decisions recorded yet.'));
+      } else {
+        console.log(chalk.bold.underline('\n💡 Architectural Decisions:\n'));
+        for (const d of decisions) {
+          const statusBadge = d.status === 'active' ? chalk.green('[active]') : chalk.yellow(`[${d.status}]`);
+          console.log(`${statusBadge} ${chalk.bold.white(d.title)}`);
+          console.log(chalk.gray(`  Rationale: ${d.rationale}`));
+          if (d.alternatives_considered) {
+            console.log(chalk.gray(`  Alternatives: ${d.alternatives_considered}`));
+          }
+          if (d.affected_paths && d.affected_paths.length > 0) {
+            console.log(chalk.gray(`  Affected paths: ${d.affected_paths.join(', ')}`));
+          }
+          console.log('');
+        }
+      }
+      await getKiteretsu().destroy();
+      return;
+    } catch (error: any) {
+      console.error(chalk.red('Failed to list decisions: ' + error.message));
       process.exitCode = 1;
       return;
     }

@@ -110,6 +110,56 @@ export async function runMcpServer(customRootDir?: string) {
             },
             required: ['files']
           }
+        },
+        {
+          name: 'record_decision',
+          description: 'Record an architectural decision (ADR) with rationale and affected paths',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              title: {
+                type: 'string',
+                description: 'Title of the architectural decision'
+              },
+              rationale: {
+                type: 'string',
+                description: 'Detailed explanation and justification for why this decision was made'
+              },
+              alternatives_considered: {
+                type: 'string',
+                description: 'Other options considered and why they were rejected'
+              },
+              affected_paths: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'List of repository paths or glob patterns affected by this decision'
+              },
+              status: {
+                type: 'string',
+                enum: ['active', 'deprecated', 'superseded'],
+                description: 'Current status of the decision'
+              }
+            },
+            required: ['title', 'rationale']
+          }
+        },
+        {
+          name: 'get_decisions',
+          description: 'Retrieve architectural decisions (ADRs) relevant to a query or paths',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              query: {
+                type: 'string',
+                description: 'Search query for relevant decisions'
+              },
+              paths: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Optional file paths to filter decisions by'
+              }
+            }
+          }
         }
       ],
     };
@@ -122,7 +172,8 @@ export async function runMcpServer(customRootDir?: string) {
     try {
       if (name === 'get_context_pack') {
         const task = (args as any).task;
-        const pack = await kiteretsu.getContextPack(task);
+        const budgetTokens = (args as any).budget_tokens;
+        const pack = await kiteretsu.getContextPack(task, { budgetTokens });
         return {
           content: [
             {
@@ -153,6 +204,24 @@ export async function runMcpServer(customRootDir?: string) {
         await kiteretsu.recordTaskOutcome(task, type, result, notes);
         return {
           content: [{ type: 'text', text: 'Task outcome recorded successfully.' }],
+        };
+      }
+
+      if (name === 'record_decision') {
+        const { title, rationale, alternatives_considered = '', affected_paths = [], status = 'active' } = args as any;
+        await kiteretsu.recordDecision(title, rationale, alternatives_considered, affected_paths, status);
+        return {
+          content: [{ type: 'text', text: 'Architectural decision recorded successfully.' }],
+        };
+      }
+
+      if (name === 'get_decisions') {
+        const { query = '', paths = [] } = (args as any) || {};
+        const decisions = query
+          ? await kiteretsu.getRelevantDecisions(query, paths, 10)
+          : await kiteretsu.getAllDecisions();
+        return {
+          content: [{ type: 'text', text: JSON.stringify(decisions, null, 2) }],
         };
       }
 
