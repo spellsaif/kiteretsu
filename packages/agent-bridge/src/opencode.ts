@@ -14,16 +14,20 @@ export class OpenCodeIntegration implements AgentIntegration {
   readonly name = 'OpenCode';
 
   async detect(root: string): Promise<boolean> {
-    const opencodeMd = path.join(root, 'OPENCODE.md');
+    const opencodeJson = path.join(root, 'opencode.json');
     const opencodeDir = path.join(root, '.opencode');
+    const opencodeMd = path.join(root, 'OPENCODE.md');
     return (
+      (await fs.pathExists(opencodeJson)) ||
+      (await fs.pathExists(opencodeDir)) ||
       (await fs.pathExists(opencodeMd)) ||
-      (await fs.pathExists(opencodeDir))
+      !!process.env.OPENCODE
     );
   }
 
   async install(ctx: IntegrationContext): Promise<void> {
-    const instructionPath = path.join(ctx.rootDir, 'OPENCODE.md');
+    // 1. Manage canonical project instructions in AGENTS.md
+    const instructionPath = path.join(ctx.rootDir, 'AGENTS.md');
     let existingContent = '';
     if (await fs.pathExists(instructionPath)) {
       existingContent = await fs.readFile(instructionPath, 'utf8');
@@ -33,28 +37,44 @@ export class OpenCodeIntegration implements AgentIntegration {
     const updatedContent = injectManagedSection(existingContent, instructions);
     await fs.writeFile(instructionPath, updatedContent, 'utf8');
 
-    // Configure MCP in .opencode/mcp.json
-    const opencodeDir = path.join(ctx.rootDir, '.opencode');
-    await fs.ensureDir(opencodeDir);
-    const mcpConfigPath = path.join(opencodeDir, 'mcp.json');
-    let mcpConfig: any = {};
-    if (await fs.pathExists(mcpConfigPath)) {
+    // 2. Configure MCP server in opencode.json
+    const opencodeJsonPath = path.join(ctx.rootDir, 'opencode.json');
+    let opencodeConfig: any = {};
+    if (await fs.pathExists(opencodeJsonPath)) {
       try {
-        mcpConfig = await fs.readJson(mcpConfigPath);
+        opencodeConfig = await fs.readJson(opencodeJsonPath);
       } catch { }
     }
 
-    if (!mcpConfig.mcpServers) {
-      mcpConfig.mcpServers = {};
+    if (!opencodeConfig.mcp) {
+      opencodeConfig.mcp = {};
     }
 
-    mcpConfig.mcpServers.kiteretsu = {
-      command: ctx.mcpCommand || 'npx',
-      args: ctx.mcpArgs || ['-y', '@kiteretsu/mcp-server'],
-      env: ctx.mcpEnv || {}
+    const commandList = [
+      ctx.mcpCommand || 'npx',
+      ...(ctx.mcpArgs || ['-y', '@kiteretsu/mcp-server'])
+    ];
+
+    opencodeConfig.mcp.kiteretsu = {
+      type: 'local',
+      command: commandList,
+      ...(ctx.mcpEnv && Object.keys(ctx.mcpEnv).length > 0 ? { environment: ctx.mcpEnv } : {})
     };
 
-    await fs.writeJson(mcpConfigPath, mcpConfig, { spaces: 2 });
+    await fs.writeJson(opencodeJsonPath, opencodeConfig, { spaces: 2 });
+
+    // 3. If .opencode directory exists, also provide agent definition in .opencode/agents/kiteretsu-context.md
+    const opencodeDir = path.join(ctx.rootDir, '.opencode');
+    if (await fs.pathExists(opencodeDir)) {
+      const agentsDir = path.join(opencodeDir, 'agents');
+      await fs.ensureDir(agentsDir);
+      const agentFile = path.join(agentsDir, 'kiteretsu-context.md');
+      await fs.writeFile(
+        agentFile,
+        `---\ndescription: Kiteretsu Context and Repository Intelligence Agent\n---\n\n${instructions}\n`,
+        'utf8'
+      );
+    }
   }
 
   async update(ctx: IntegrationContext): Promise<void> {
@@ -62,7 +82,27 @@ export class OpenCodeIntegration implements AgentIntegration {
   }
 
   async remove(ctx: IntegrationContext): Promise<void> {
-    const instructionPath = path.join(ctx.rootDir, 'OPENCODE.md');
+    // Remove MCP config from opencode.json
+    const opencodeJsonPath = path.join(ctx.rootDir, 'opencode.json');
+    if (await fs.pathExists(opencodeJsonPath)) {
+      try {
+        const config = await fs.readJson(opencodeJsonPath);
+        if (config.mcp?.kiteretsu) {
+          delete config.mcp.kiteretsu;
+          if (Object.keys(config.mcp).length === 0) {
+            delete config.mcp;
+          }
+          if (Object.keys(config).length === 0) {
+            await fs.remove(opencodeJsonPath);
+          } else {
+            await fs.writeJson(opencodeJsonPath, config, { spaces: 2 });
+          }
+        }
+      } catch { }
+    }
+
+    // Remove managed section from AGENTS.md
+    const instructionPath = path.join(ctx.rootDir, 'AGENTS.md');
     if (await fs.pathExists(instructionPath)) {
       const content = await fs.readFile(instructionPath, 'utf8');
       const cleared = injectManagedSection(content, '').replace(/<!-- KITERETSU:START -->\s*<!-- KITERETSU:END -->/g, '').trim();
@@ -73,22 +113,17 @@ export class OpenCodeIntegration implements AgentIntegration {
       }
     }
 
-    const mcpConfigPath = path.join(ctx.rootDir, '.opencode', 'mcp.json');
-    if (await fs.pathExists(mcpConfigPath)) {
-      try {
-        const config = await fs.readJson(mcpConfigPath);
-        if (config.mcpServers?.kiteretsu) {
-          delete config.mcpServers.kiteretsu;
-          await fs.writeJson(mcpConfigPath, config, { spaces: 2 });
-        }
-      } catch { }
+    // Remove agent file if created
+    const agentFile = path.join(ctx.rootDir, '.opencode', 'agents', 'kiteretsu-context.md');
+    if (await fs.pathExists(agentFile)) {
+      await fs.remove(agentFile);
     }
   }
 
   async validate(ctx: IntegrationContext): Promise<IntegrationStatus> {
     const issues: string[] = [];
-    const instructionPath = path.join(ctx.rootDir, 'OPENCODE.md');
-    const mcpConfigPath = path.join(ctx.rootDir, '.opencode', 'mcp.json');
+    const instructionPath = path.join(ctx.rootDir, 'AGENTS.md');
+    const opencodeJsonPath = path.join(ctx.rootDir, 'opencode.json');
 
     const detected = await this.detect(ctx.rootDir);
     let installed = false;
@@ -99,20 +134,20 @@ export class OpenCodeIntegration implements AgentIntegration {
       if (extractManagedSection(content)) {
         installed = true;
       } else {
-        issues.push('OPENCODE.md exists but is missing the managed Kiteretsu section.');
+        issues.push('AGENTS.md exists but is missing the managed Kiteretsu section.');
       }
     }
 
-    if (await fs.pathExists(mcpConfigPath)) {
+    if (await fs.pathExists(opencodeJsonPath)) {
       try {
-        const config = await fs.readJson(mcpConfigPath);
-        if (config.mcpServers?.kiteretsu) {
+        const config = await fs.readJson(opencodeJsonPath);
+        if (config.mcp?.kiteretsu) {
           healthy = installed && issues.length === 0;
         } else {
-          issues.push('.opencode/mcp.json is missing kiteretsu MCP server configuration.');
+          issues.push('opencode.json is missing mcp.kiteretsu configuration.');
         }
       } catch {
-        issues.push('.opencode/mcp.json is invalid JSON.');
+        issues.push('opencode.json is invalid JSON.');
       }
     }
 
@@ -122,8 +157,8 @@ export class OpenCodeIntegration implements AgentIntegration {
       detected,
       installed,
       healthy: installed && (issues.length === 0 || !detected),
-      instructionFile: 'OPENCODE.md',
-      mcpConfigFile: '.opencode/mcp.json',
+      instructionFile: 'AGENTS.md',
+      mcpConfigFile: 'opencode.json',
       issues
     };
   }

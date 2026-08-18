@@ -9,22 +9,24 @@ import {
   getStandardAgentInstructions
 } from './agent.js';
 
-export class CodexIntegration implements AgentIntegration {
-  readonly id = 'codex';
-  readonly name = 'OpenAI Codex';
+export class CopilotIntegration implements AgentIntegration {
+  readonly id = 'copilot';
+  readonly name = 'GitHub Copilot';
 
   async detect(root: string): Promise<boolean> {
-    const codexMd = path.join(root, 'CODEX.md');
-    const codexDir = path.join(root, '.codex');
+    const copilotMd = path.join(root, '.github', 'copilot-instructions.md');
+    const githubDir = path.join(root, '.github');
     return (
-      (await fs.pathExists(codexMd)) ||
-      (await fs.pathExists(codexDir)) ||
-      !!process.env.CODEX
+      (await fs.pathExists(copilotMd)) ||
+      (await fs.pathExists(githubDir)) ||
+      !!process.env.GITHUB_COPILOT
     );
   }
 
   async install(ctx: IntegrationContext): Promise<void> {
-    const instructionPath = path.join(ctx.rootDir, 'CODEX.md');
+    const githubDir = path.join(ctx.rootDir, '.github');
+    await fs.ensureDir(githubDir);
+    const instructionPath = path.join(githubDir, 'copilot-instructions.md');
 
     let existingContent = '';
     if (await fs.pathExists(instructionPath)) {
@@ -41,7 +43,7 @@ export class CodexIntegration implements AgentIntegration {
   }
 
   async remove(ctx: IntegrationContext): Promise<void> {
-    const instructionPath = path.join(ctx.rootDir, 'CODEX.md');
+    const instructionPath = path.join(ctx.rootDir, '.github', 'copilot-instructions.md');
     if (await fs.pathExists(instructionPath)) {
       const content = await fs.readFile(instructionPath, 'utf8');
       const cleared = injectManagedSection(content, '').replace(/<!-- KITERETSU:START -->\s*<!-- KITERETSU:END -->/g, '').trim();
@@ -55,7 +57,7 @@ export class CodexIntegration implements AgentIntegration {
 
   async validate(ctx: IntegrationContext): Promise<IntegrationStatus> {
     const issues: string[] = [];
-    const instructionPath = path.join(ctx.rootDir, 'CODEX.md');
+    const instructionPath = path.join(ctx.rootDir, '.github', 'copilot-instructions.md');
 
     const detected = await this.detect(ctx.rootDir);
     let installed = false;
@@ -65,7 +67,7 @@ export class CodexIntegration implements AgentIntegration {
       if (extractManagedSection(content)) {
         installed = true;
       } else {
-        issues.push('CODEX.md exists but is missing the managed Kiteretsu section.');
+        issues.push('.github/copilot-instructions.md exists but is missing the managed Kiteretsu section.');
       }
     }
 
@@ -75,7 +77,7 @@ export class CodexIntegration implements AgentIntegration {
       detected,
       installed,
       healthy: installed && issues.length === 0,
-      instructionFile: 'CODEX.md',
+      instructionFile: '.github/copilot-instructions.md',
       issues
     };
   }

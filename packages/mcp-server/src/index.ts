@@ -146,7 +146,7 @@ export async function runMcpServer(customRootDir?: string) {
       tools: [
         {
           name: 'kiteretsu_context',
-          description: 'MANDATORY: Compile a precision Context Pack for a coding task with multi-sensor confidence, blast radius, tests, and ADRs',
+          description: 'MANDATORY: Compile a precision Context Pack for a coding task with four-signal multi-sensor relevance scoring, blast radius, tests, and ADRs',
           inputSchema: {
             type: 'object',
             properties: {

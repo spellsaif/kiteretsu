@@ -79,21 +79,54 @@ program
 program
   .command('init')
   .description('One-command onboarding: detect repo, configure agents & MCP, initialize and index')
-  .action(async () => {
+  .option('-a, --agent <agents...>', 'Specific agent integrations to configure (claude, gemini, opencode, cursor, codex, copilot, generic)')
+  .option('--all', 'Configure all available agent integrations')
+  .action(async (options) => {
     console.log(chalk.bold.cyan('🔍 Detecting environment & AI coding agents...\n'));
     const detector = new AgentDetector();
-    const detected = await detector.detect(rootDir);
+    let selectedAgentIds: string[] = [];
 
-    if (detected.length > 0) {
-      console.log(chalk.bold('Detected:'));
-      detected.forEach(d => console.log(chalk.green(`  ✓ ${d.name}`)));
+    if (options.all) {
+      selectedAgentIds = detector.getAllIntegrations().map(i => i.id);
+      console.log(chalk.bold('Configuring all integrations:'));
+      detector.getAllIntegrations().forEach(d => console.log(chalk.green(`  ✓ ${d.name}`)));
+    } else if (options.agent && options.agent.length > 0) {
+      selectedAgentIds = options.agent;
+      console.log(chalk.bold('Configuring specified integrations:'));
+      selectedAgentIds.forEach(id => {
+        const integ = detector.getIntegration(id);
+        console.log(chalk.green(`  ✓ ${integ?.name || id}`));
+      });
     } else {
-      console.log(chalk.yellow('  ℹ No specific agent detected. Configuring universal AGENTS.md & MCP.'));
+      const detected = await detector.detect(rootDir);
+      if (detected.length > 0) {
+        console.log(chalk.bold('Detected:'));
+        detected.forEach(d => console.log(chalk.green(`  ✓ ${d.name}`)));
+        selectedAgentIds = detected.map(d => d.id);
+      } else if (process.stdout.isTTY) {
+        console.log(chalk.yellow('  ℹ No specific agent configuration detected.\n'));
+        const answers = await inquirer.prompt([
+          {
+            type: 'checkbox',
+            name: 'selectedAgents',
+            message: 'Select AI coding agents to configure with Kiteretsu:',
+            choices: detector.getAllIntegrations().map(i => ({
+              name: i.name,
+              value: i.id,
+              checked: i.id === 'generic'
+            }))
+          }
+        ]);
+        selectedAgentIds = answers.selectedAgents.length > 0 ? answers.selectedAgents : ['generic'];
+      } else {
+        console.log(chalk.yellow('  ℹ No specific agent detected. Configuring universal AGENTS.md & MCP.'));
+        selectedAgentIds = ['generic'];
+      }
     }
 
     console.log(chalk.bold.cyan('\n⚙ Installing Kiteretsu Agent Bridge & MCP...'));
     const installer = new AgentInstaller(detector);
-    const installResult = await installer.install({ rootDir });
+    const installResult = await installer.install({ rootDir }, selectedAgentIds);
 
     installResult.installed.forEach(i => {
       console.log(chalk.green(`  ✓ ${i.name} managed instructions`));
@@ -492,7 +525,8 @@ program
         if (pack.read_first.length > 0) {
           console.log(chalk.blue('\n📁 Read First:'));
           pack.read_first.forEach((f: any) => {
-            const confStr = f.confidence ? ` ${chalk.green(`(${(f.confidence * 100).toFixed(0)}% confidence)`)}` : '';
+            const score = f.relevance_score ?? f.confidence;
+            const confStr = score ? ` ${chalk.green(`(${(score * 100).toFixed(0)}% relevance score)`)}` : '';
             const signalsStr = f.signals && f.signals.length > 0 ? ` ${chalk.gray(`[${f.signals.join(', ')}]`)}` : '';
             console.log(chalk.white(`  - ${f.path}${confStr}${signalsStr}`));
             if (f.summary && !f.summary.toLowerCase().includes('no summary')) {
@@ -505,7 +539,8 @@ program
         if (pack.optional_read && pack.optional_read.length > 0) {
           console.log(chalk.blue('\n📄 Optional Context:'));
           pack.optional_read.forEach((f: any) => {
-            const confStr = f.confidence ? ` ${chalk.gray(`(${(f.confidence * 100).toFixed(0)}%)`)}` : '';
+            const score = f.relevance_score ?? f.confidence;
+            const confStr = score ? ` ${chalk.gray(`(${(score * 100).toFixed(0)}%)`)}` : '';
             console.log(chalk.white(`  - ${f.path}${confStr}`));
           });
         }

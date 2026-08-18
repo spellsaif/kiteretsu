@@ -14,6 +14,7 @@ export interface ContextPackOptions {
 export interface ContextPackResult {
   task: string;
   strategy: string;
+  relevance_score?: number;
   confidence: number;
   read_first: ContextFileItem[];
   optional_read: ContextFileItem[];
@@ -58,6 +59,7 @@ export class ContextCompiler {
       return {
         task,
         strategy: 'No actionable keywords found.',
+        relevance_score: 0.0,
         confidence: 0.0,
         read_first: [],
         blast_radius: [],
@@ -74,6 +76,7 @@ export class ContextCompiler {
       return {
         task,
         strategy: 'No relevant files found.',
+        relevance_score: 0.0,
         confidence: 0.0,
         read_first: [],
         blast_radius: [],
@@ -148,12 +151,13 @@ export class ContextCompiler {
     const metadataTokens = Math.ceil((task.length + 120) / 4) + rulesTokens + testsTokens + blastTokens + memoryTokens;
 
     const allocation = await this.budgetOptimizer.allocateCandidates(candidates, budgetTokens, metadataTokens);
-    const overallConfidence = candidates.length > 0 ? candidates[0].confidence : 0.5;
+    const overallScore = candidates.length > 0 ? (candidates[0].relevance_score ?? candidates[0].confidence) : 0.5;
 
     return {
       task,
       strategy: `Context centered on ${candidates[0].path.split('/').pop()}`,
-      confidence: overallConfidence,
+      relevance_score: overallScore,
+      confidence: overallScore,
       read_first: allocation.readFirst,
       blast_radius: Array.from(blastRadiusFiles).slice(0, 10),
       tests_to_run: Array.from(testsToRun).slice(0, 5),

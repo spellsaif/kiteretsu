@@ -4,6 +4,7 @@ import { GeminiIntegration } from './gemini.js';
 import { OpenCodeIntegration } from './opencode.js';
 import { CursorIntegration } from './cursor.js';
 import { CodexIntegration } from './codex.js';
+import { CopilotIntegration } from './copilot.js';
 import { GenericIntegration } from './generic.js';
 
 export class AgentDetector {
@@ -16,6 +17,7 @@ export class AgentDetector {
       new OpenCodeIntegration(),
       new CursorIntegration(),
       new CodexIntegration(),
+      new CopilotIntegration(),
       new GenericIntegration()
     ];
   }
@@ -35,13 +37,6 @@ export class AgentDetector {
         detected.push(integration);
       }
     }
-
-    // If no specific agent is detected, always include Claude, Cursor, and Generic as defaults
-    if (detected.length === 0) {
-      const fallbackIds = ['claude', 'cursor', 'generic'];
-      return this.integrations.filter(i => fallbackIds.includes(i.id));
-    }
-
     return detected;
   }
 }

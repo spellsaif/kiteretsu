@@ -83,6 +83,8 @@ export class HybridRetriever {
 
     // ─── 2. Lexical & Symbol Pass ───
     const keywordSignificance = await this.lexical.computeKeywordSignificance(rawKeywords);
+    const directMatchedSymbolIds: number[] = [];
+
     for (const kw of rawKeywords) {
       const idf = keywordSignificance.get(kw) || 1.0;
 
@@ -90,9 +92,10 @@ export class HybridRetriever {
       const symbolMatches = await this.knex('symbols')
         .join('files', 'symbols.file_id', 'files.id')
         .where('symbols.name', 'like', `%${kw}%`)
-        .select('files.id as file_id', 'symbols.name as symbol_name');
+        .select('symbols.id as symbol_id', 'files.id as file_id', 'symbols.name as symbol_name');
 
       for (const m of symbolMatches) {
+        directMatchedSymbolIds.push(m.symbol_id);
         const sig = await getOrCreateSignal(m.file_id);
         if (sig) {
           sig.lexicalScore += 8.0 * idf;
@@ -130,10 +133,77 @@ export class HybridRetriever {
       }
     }
 
-    // ─── 3. Graph Proximity Expansion Pass ───
+    // ─── 3. Symbol-Aware & File-Level Graph Proximity Expansion Pass ───
     const currentTopFileIds = Array.from(signals.keys()).slice(0, 5);
+
+    // Collect candidate symbols for spatial graph traversal (both direct matched and top files' symbols)
+    let candidateSymbolIds = [...new Set(directMatchedSymbolIds)];
+    if (candidateSymbolIds.length === 0 && currentTopFileIds.length > 0) {
+      const topSymbols = await this.knex('symbols')
+        .whereIn('file_id', currentTopFileIds)
+        .select('id');
+      candidateSymbolIds = topSymbols.map(s => s.id);
+    }
+
+    if (candidateSymbolIds.length > 0) {
+      // Outgoing symbol edges: Symbol -> calls/references/extends/implements -> Symbol
+      const outgoingSymbolEdges = await this.knex('graph_edges')
+        .join('symbols as target_sym', 'graph_edges.target_id', 'target_sym.id')
+        .where('graph_edges.source_type', 'symbol')
+        .where('graph_edges.target_type', 'symbol')
+        .whereIn('graph_edges.source_id', candidateSymbolIds)
+        .whereIn('graph_edges.relation', ['calls', 'references', 'extends', 'implements', 'tested_by'])
+        .select(
+          'graph_edges.source_id',
+          'graph_edges.relation',
+          'target_sym.id as target_sym_id',
+          'target_sym.name as target_sym_name',
+          'target_sym.file_id as target_file_id'
+        );
+
+      for (const edge of outgoingSymbolEdges) {
+        const targetSig = await getOrCreateSignal(edge.target_file_id);
+        if (targetSig) {
+          const boost = edge.relation === 'extends' || edge.relation === 'implements' ? 0.85 : 0.70;
+          targetSig.graphBoost = Math.max(targetSig.graphBoost, boost);
+          targetSig.graphTraces.push(`graph:${edge.relation}:${edge.target_sym_name}`);
+          if (!targetSig.matchedSymbols.includes(edge.target_sym_name)) {
+            targetSig.matchedSymbols.push(edge.target_sym_name);
+          }
+        }
+      }
+
+      // Incoming symbol edges: Symbol -> calls/references/extends/implements -> Candidate Symbol
+      const incomingSymbolEdges = await this.knex('graph_edges')
+        .join('symbols as src_sym', 'graph_edges.source_id', 'src_sym.id')
+        .where('graph_edges.source_type', 'symbol')
+        .where('graph_edges.target_type', 'symbol')
+        .whereIn('graph_edges.target_id', candidateSymbolIds)
+        .whereIn('graph_edges.relation', ['calls', 'references', 'extends', 'implements', 'tested_by'])
+        .select(
+          'graph_edges.target_id',
+          'graph_edges.relation',
+          'src_sym.id as src_sym_id',
+          'src_sym.name as src_sym_name',
+          'src_sym.file_id as src_file_id'
+        );
+
+      for (const edge of incomingSymbolEdges) {
+        const srcSig = await getOrCreateSignal(edge.src_file_id);
+        if (srcSig) {
+          const boost = edge.relation === 'tested_by' ? 0.85 : 0.65;
+          srcSig.graphBoost = Math.max(srcSig.graphBoost, boost);
+          srcSig.graphTraces.push(`graph:called_by:${edge.src_sym_name}`);
+          if (!srcSig.matchedSymbols.includes(edge.src_sym_name)) {
+            srcSig.matchedSymbols.push(edge.src_sym_name);
+          }
+        }
+      }
+    }
+
+    // File-level graph edges (imports / tested_by)
     if (currentTopFileIds.length > 0) {
-      // Find files imported by or calling top files
+      // Find files imported by top files
       const connectedEdges = await this.knex('graph_edges')
         .whereIn('source_id', currentTopFileIds)
         .where('source_type', 'file')
@@ -177,7 +247,7 @@ export class HybridRetriever {
       }
     }
 
-    // ─── 5. Multi-Sensor Fusion & Ranking ───
+    // ─── 5. Four-Signal Multi-Sensor Fusion & Ranking ───
     const fusedCandidates = await this.fusion.fuse(signals, maxResults);
     return { candidates: fusedCandidates, keywords: rawKeywords, semanticDegraded };
   }

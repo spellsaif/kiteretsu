@@ -9,7 +9,14 @@ import {
   AgentDetector,
   AgentInstaller,
   AgentUpdater,
-  AgentDoctor
+  AgentDoctor,
+  OpenCodeIntegration,
+  CursorIntegration,
+  CodexIntegration,
+  CopilotIntegration,
+  GeminiIntegration,
+  ClaudeIntegration,
+  GenericIntegration
 } from '../src/index.js';
 
 const TEST_ROOT = path.resolve(process.cwd(), 'temp_test_bridge');
@@ -92,7 +99,11 @@ describe('Agent Bridge & Managed Instruction Sections', () => {
     expect(claudeJson.mcpServers.kiteretsu).toBeDefined();
     expect(claudeJson.mcpServers.kiteretsu.command).toBe('npx');
 
-    // Verify .cursor/mcp.json has MCP server config
+    // Verify Cursor uses .cursor/rules/kiteretsu.mdc and .cursor/mcp.json
+    const cursorMdc = await fs.readFile(path.join(TEST_ROOT, '.cursor', 'rules', 'kiteretsu.mdc'), 'utf8');
+    expect(cursorMdc).toContain('alwaysApply: true');
+    expect(cursorMdc).toContain(KITERETSU_SECTION_START);
+
     const cursorJson = await fs.readJson(path.join(TEST_ROOT, '.cursor', 'mcp.json'));
     expect(cursorJson.mcpServers.kiteretsu).toBeDefined();
 
@@ -101,5 +112,48 @@ describe('Agent Bridge & Managed Instruction Sections', () => {
     const report = await doctor.diagnose({ rootDir: TEST_ROOT });
     expect(report.overallHealthy).toBe(true);
     expect(report.statuses.some(s => s.id === 'claude' && s.healthy)).toBe(true);
+    expect(report.statuses.some(s => s.id === 'cursor' && s.healthy)).toBe(true);
+  });
+
+  it('correctly manages canonical OpenCode configuration in opencode.json and AGENTS.md', async () => {
+    const opencode = new OpenCodeIntegration();
+    await opencode.install({ rootDir: TEST_ROOT });
+
+    // Verify AGENTS.md created with managed instructions
+    const agentsMd = await fs.readFile(path.join(TEST_ROOT, 'AGENTS.md'), 'utf8');
+    expect(agentsMd).toContain(KITERETSU_SECTION_START);
+
+    // Verify opencode.json created with mcp.kiteretsu
+    const opencodeJson = await fs.readJson(path.join(TEST_ROOT, 'opencode.json'));
+    expect(opencodeJson.mcp.kiteretsu).toBeDefined();
+    expect(opencodeJson.mcp.kiteretsu.type).toBe('local');
+    expect(opencodeJson.mcp.kiteretsu.command).toEqual(['npx', '-y', '@kiteretsu/mcp-server']);
+
+    const status = await opencode.validate({ rootDir: TEST_ROOT });
+    expect(status.installed).toBe(true);
+    expect(status.healthy).toBe(true);
+  });
+
+  it('distinguishes between GitHub Copilot and OpenAI Codex integrations', async () => {
+    const copilot = new CopilotIntegration();
+    const codex = new CodexIntegration();
+
+    expect(copilot.id).toBe('copilot');
+    expect(codex.id).toBe('codex');
+
+    await copilot.install({ rootDir: TEST_ROOT });
+    await codex.install({ rootDir: TEST_ROOT });
+
+    const copilotContent = await fs.readFile(path.join(TEST_ROOT, '.github', 'copilot-instructions.md'), 'utf8');
+    expect(copilotContent).toContain(KITERETSU_SECTION_START);
+
+    const codexContent = await fs.readFile(path.join(TEST_ROOT, 'CODEX.md'), 'utf8');
+    expect(codexContent).toContain(KITERETSU_SECTION_START);
+
+    const copilotStatus = await copilot.validate({ rootDir: TEST_ROOT });
+    const codexStatus = await codex.validate({ rootDir: TEST_ROOT });
+
+    expect(copilotStatus.healthy).toBe(true);
+    expect(codexStatus.healthy).toBe(true);
   });
 });

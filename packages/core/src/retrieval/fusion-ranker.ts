@@ -19,11 +19,21 @@ export interface FusedCandidate {
   path: string;
   summary: string;
   stale: boolean;
+  relevance_score: number;
   confidence: number;
   signals: string[];
   key_symbols: string[];
 }
 
+/**
+ * Four-Signal Multi-Sensor Fusion Ranker
+ *
+ * Combines 4 weighted dimensions:
+ * 1. Lexical (IDF-weighted term & symbol matching) - 35%
+ * 2. Semantic (Vector cosine similarity)           - 35%
+ * 3. Graph (Symbol heritage & call/import paths)   - 20%
+ * 4. Memory (ADR & scoped rule correlation)        - 10%
+ */
 export class MultiSensorFusionRanker {
   constructor(private knex: Knex) { }
 
@@ -47,7 +57,8 @@ export class MultiSensorFusionRanker {
       const normGraph = Math.min(1.0, sig.graphBoost);
       const normMemory = Math.min(1.0, sig.memoryBoost);
 
-      // Weighted multi-sensor fusion
+      // Four-Signal Multi-Sensor Fusion:
+      // Lexical (35%) + Semantic (35%) + Graph (20%) + Memory (10%)
       const rawScore = (
         normLexical * 0.35 +
         normSemantic * 0.35 +
@@ -55,8 +66,8 @@ export class MultiSensorFusionRanker {
         normMemory * 0.10
       );
 
-      // Compute explainable confidence (0.0 to 1.0)
-      const confidence = Math.min(0.99, Math.max(0.20, Number(rawScore.toFixed(2))));
+      // Composite relevance score (0.20 to 0.99)
+      const score = Math.min(0.99, Math.max(0.20, Number(rawScore.toFixed(2))));
 
       // Explainable signal breakdown
       const signals: string[] = [];
@@ -81,7 +92,8 @@ export class MultiSensorFusionRanker {
         path: sig.path,
         summary: sig.summary,
         stale: sig.stale,
-        confidence,
+        relevance_score: score,
+        confidence: score, // preserved for backward-compatibility
         signals,
         key_symbols: sig.matchedSymbols,
         rawScore

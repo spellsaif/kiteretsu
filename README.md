@@ -1,7 +1,8 @@
 <div align="center">
   <img src="https://i.ibb.co/cKjWsd7p/kiteretsu.png" width="280" alt="Kiteretsu Logo" />
   <h1>Kiteretsu</h1>
-  <p><strong>The Continuous Code Intelligence Graph, Context Compiler & Memory Layer for AI Coding Agents</strong></p>
+  <p><strong>Persistent Repository Intelligence for AI Coding Agents</strong></p>
+  <p><em>Kiteretsu continuously builds a graph of your codebase, remembers architectural decisions and engineering history, and compiles task-specific context for coding agents.</em></p>
 
   <p>
     <a href="https://github.com/spellsaif/kiteretsu/actions"><img src="https://img.shields.io/badge/build-passing-brightgreen?style=flat-square" alt="Build Status" /></a>
@@ -18,25 +19,13 @@
 
 ## ⚡ 15-Second Overview
 
-**Kiteretsu** (キテレツ) is an open-source, local-first **Code Intelligence Graph + Context Compiler + Structured Memory Layer** that runs alongside your AI coding agents (**Claude Code**, **Cursor**, **Gemini CLI**, **OpenCode**, **Codex**, and **Aider**).
+**Kiteretsu** (キテレツ) is an open-source, local-first **Code Intelligence Graph + Context Compiler + Structured Memory Layer** that runs alongside your AI coding agents (**Claude Code**, **Cursor**, **Gemini CLI**, **OpenCode**, **OpenAI Codex**, **GitHub Copilot**, and **Generic MCP / AGENTS.md**).
 
 Instead of forcing LLMs to greedily grep through hundreds of files or rely on naive text vector chunks, Kiteretsu continuously maintains an AST symbol graph, tracks Architectural Decision Records (ADRs), retains episodic task learnings, and compiles precision, budget-optimized **Context Packs** with explainable evidence before the agent touches your code.
 
 ```bash
 npx kiteretsu init
 ```
-
----
-
-## 🔮 The Heritage & Philosophy: The Inventor's Encyclopedia
-
-### 1. The Heritage of Invention
-**Kiteretsu** (キテレツ) draws its name and spirit from the classic Japanese anime and manga *Kiteretsu Daihyakka* (キテレツ大百科). In the story, the brilliant young inventor, Eiichi, constructs marvelous inventions (like Korosuke the automaton) not through blind trial-and-error or brute-force guessing, but by referencing the **Kiteretsu Encyclopedia**—a multi-volume codex containing the architectural designs, physical laws, formulas, and warnings left behind by his genius ancestor, Kiteretsu-sai.
-
-### 2. The Modern Engineering Analogy
-In modern software engineering, AI coding agents are extraordinarily talented builders, but they are operating without an encyclopedia. When left on their own, even the most capable LLMs waste context tokens repeatedly guessing directory structures, hallucinating dependency graphs, violating team idioms, and repeating previous mistakes.
-
-**Kiteretsu is the externalized Encyclopedia for your AI agents.** It provides a continuous, persistent code intelligence graph and memory layer that gives agents spatial awareness, architectural guardrails, and historical lessons before they write a single line of code.
 
 ---
 
@@ -48,7 +37,7 @@ Modern AI coding agents are extraordinarily capable code generators, but they ar
 2. **Context Window Pollution**: Large repositories overwhelm LLM attention with irrelevant boilerplate, degrading code quality and spiking token costs.
 3. **Lost Architectural Decisions**: Crucial engineering decisions ("why we use SQLite WAL instead of Postgres for local state") disappear into old PR descriptions and Git logs.
 4. **Text RAG Doesn't Understand Code**: Naive text chunking splits classes, drops inheritance hierarchies, and misses cross-file function call chains.
-5. **No Cross-Agent Memory**: If Claude Code solves a tricky token expiration bug on Monday, Cursor or Gemini will repeat the exact same mistake on Tuesday.
+5. **No Cross-Agent Memory**: If Claude Code solves a tricky token expiration bug on Monday, Cursor, OpenCode, or Gemini will repeat the exact same mistake on Tuesday.
 
 ---
 
@@ -68,15 +57,27 @@ Kiteretsu is **not another AI coding agent**. It is the **intelligence layer und
 │ │  Scoped Governance Rules    │  Episodic Task & Error Memory         │ │
 │ │  Path & Language Scoped     │  Successes, Pitfalls, Lessons Learned │ │
 │ ├─────────────────────────────┼───────────────────────────────────────┤ │
-│ │  Multi-Sensor Fusion Ranker │  Context Budget Optimizer             │ │
+│ │  4-Signal Fusion Ranker     │  Context Budget Optimizer             │ │
 │ │  Lexical + Vector + Graph   │  Topological Optimal Reading Order    │ │
 │ └─────────────────────────────┴───────────────────────────────────────┘ │
 └────────────────────────────────────┬────────────────────────────────────┘
                                      ↓
                 Canonical MCP Protocol & Local CLI Engine
                                      ↓
-    Claude Code  •  Cursor  •  Gemini CLI  •  OpenCode  •  Copilot / Codex
+ Claude Code • Cursor • Gemini CLI • OpenCode • OpenAI Codex • GitHub Copilot
 ```
+
+---
+
+## 🔮 The Heritage & Philosophy: The Inventor's Encyclopedia
+
+### 1. The Heritage of Invention
+**Kiteretsu** (キテレツ) draws its name and spirit from the classic Japanese anime and manga *Kiteretsu Daihyakka* (キテレツ大百科). In the story, the brilliant young inventor, Eiichi, constructs marvelous inventions (like Korosuke the automaton) not through blind trial-and-error or brute-force guessing, but by referencing the **Kiteretsu Encyclopedia**—a multi-volume codex containing the architectural designs, physical laws, formulas, and warnings left behind by his genius ancestor, Kiteretsu-sai.
+
+### 2. The Modern Engineering Analogy
+In modern software engineering, AI coding agents are extraordinarily talented builders, but they are operating without an encyclopedia. When left on their own, even the most capable LLMs waste context tokens repeatedly guessing directory structures, hallucinating dependency graphs, violating team idioms, and repeating previous mistakes.
+
+**Kiteretsu is the externalized Encyclopedia for your AI agents.** It provides a continuous, persistent code intelligence graph and memory layer that gives agents spatial awareness, architectural guardrails, and historical lessons before they write a single line of code.
 
 ---
 
@@ -89,7 +90,7 @@ Kiteretsu is **not another AI coding agent**. It is the **intelligence layer und
 | **Architectural Decisions (ADRs)** | ❌ | Partial | ❌ | **✅ First-Class ADR Store** |
 | **Episodic Engineering Memory** | ❌ | ✅ (Unstructured) | ❌ | **✅ Vector-Indexed Tasks** |
 | **Scoped Governance Rules** | ❌ | Partial | ❌ | **✅ Path & Lang Scoped** |
-| **Multi-Sensor Fusion Retrieval** | ❌ (Vector only) | ❌ (Text only) | ❌ (Lexical only) | **✅ 5-Sensor Ranked** |
+| **Multi-Sensor Fusion Retrieval** | ❌ (Vector only) | ❌ (Text only) | ❌ (Lexical only) | **✅ 4-Signal Ranked** |
 | **Explainable Evidence Traces** | ❌ | ❌ | ❌ | **✅ Symbol, Graph, Vector traces** |
 | **Token Budget Optimization** | ❌ | ❌ | ❌ | **✅ Dynamic Token Packing** |
 | **Zero-Config Agent Bridge** | ❌ | ❌ | ❌ | **✅ 1-Command Setup** |
@@ -123,7 +124,7 @@ Frustrating debugging loop                      Clean, safe, idiomatic implement
 
 ```
                                AI Coding Agents
-                    (Claude Code, Cursor, Gemini, OpenCode, Codex)
+        (Claude Code, Cursor, Gemini CLI, OpenCode, Codex, Copilot)
                                       │
                          Model Context Protocol (MCP) / CLI
                                       │
@@ -132,15 +133,15 @@ Frustrating debugging loop                      Clean, safe, idiomatic implement
         ┌─────────────────────────────┼─────────────────────────────┐
         │                             │                             │
     Retrieval Subsystem        Memory Subsystem             Graph Subsystem
-   • Lexical Search (BM25)    • Architectural ADRs        • Polymorphic Edges
+   • IDF Lexical Search       • Architectural ADRs        • Polymorphic Edges
    • Semantic Search (ONNX)   • Scoped Rules (path/lang)  • AST Symbol Graph
    • Graph Proximity Walker   • Episodic Task History     • Dependency Resolvers
         │                             │                             │
         └─────────────────────────────┼─────────────────────────────┘
                                       │
                           Hybrid Context Compiler
-                        • Multi-Sensor Fusion Ranker
-                        • Explainable Signal Traces & Confidence
+                        • Four-Signal Multi-Sensor Fusion Ranker
+                        • Explainable Signal Traces & Relevance Score
                         • Context Budget & Reading Order Optimizer
                                       │
                          SQLite WAL Intelligence DB
@@ -158,13 +159,14 @@ Frustrating debugging loop                      Clean, safe, idiomatic implement
 ## ✨ Core Capabilities
 
 - **AST Symbol-Level Graph**: Extracts functions, methods, classes, and interfaces alongside their `calls`, `extends`, `implements`, `references`, and `exports` relations.
-- **Multi-Sensor Fusion Retrieval**: Combines Lexical BM25, ONNX Vector Cosine Similarity, Graph Proximity, and Memory Scope matching with explainable confidence.
+- **Four-Signal Multi-Sensor Fusion Retrieval**: Combines IDF-Weighted Lexical matching, ONNX Vector Cosine Similarity, Symbol Heritage & Graph Proximity, and Memory Scope matching with explainable relevance scoring.
+- **Symbol-Aware Graph Expansion**: Traverses spatial symbol links (`calls`, `extends`, `implements`, `tested_by`) to aggregate interconnected files into candidate ranking.
 - **Architectural Decision Records (ADRs)**: Store and enforce architectural decisions with title, rationale, alternatives considered, and affected path scopes.
 - **Episodic Task Memory**: Automatically indexes task outcomes and developer notes, retrieving relevant past learnings when similar tasks are executed.
 - **Scoped Rule Governance**: Enforce architectural rules scoped to `global`, specific directories/paths, or specific languages.
 - **First-Class Blast Radius**: Predict downstream impact before making edits with risk ratings (`LOW`, `MEDIUM`, `HIGH`), caller trees, and affected tests.
 - **Deep Code Explanation (`kiteretsu explain`)**: Synthesizes source AST, graph callers/callees, ADRs, rules, and tests to explain *why* code exists.
-- **Zero-Friction Agent Bridge**: Automatically configures instructions and MCP settings for Claude Code, Cursor, Gemini, OpenCode, Codex, and Generic agents.
+- **Zero-Friction Agent Bridge**: Predictably configures instructions and MCP settings for Claude Code, Cursor, Gemini CLI, OpenCode, OpenAI Codex, GitHub Copilot, and Generic MCP agents.
 - **Managed Section Safety**: Uses bounded `<!-- KITERETSU:START -->` blocks to update agent instructions without ever overwriting custom developer notes.
 - **Incremental Indexing Pipeline**: Fast 4-pass scanner reconciles deleted files, diffs AST changes, and preserves sub-millisecond query times.
 
@@ -188,14 +190,15 @@ Frustrating debugging loop                      Clean, safe, idiomatic implement
 
 ## 🤖 Supported AI Agents
 
-| Agent | Native Instructions | MCP Integration | Auto 1-Command Setup |
+| Agent | Native Instructions | MCP Integration | Setup Mechanism |
 | :--- | :---: | :---: | :---: |
-| **Claude Code** | `CLAUDE.md` (Managed Section) | `.claude.json` | ✅ `kiteretsu init` |
-| **Cursor IDE** | `.cursorrules` / `.cursor/rules` | `.cursor/mcp.json` | ✅ `kiteretsu init` |
-| **Gemini CLI / Antigravity** | `GEMINI.md` / `AGENTS.md` | `.gemini/settings.json` | ✅ `kiteretsu init` |
-| **OpenCode** | `OPENCODE.md` | `.opencode/mcp.json` | ✅ `kiteretsu init` |
-| **Codex / Copilot CLI** | `.github/copilot-instructions.md` | `.vscode/mcp.json` | ✅ `kiteretsu init` |
-| **Generic MCP Agent** | `AGENTS.md` | `mcp.json` | ✅ `kiteretsu init` |
+| **Claude Code** | `CLAUDE.md` (Managed Section) | `.claude.json` | `kiteretsu init` |
+| **Cursor IDE** | `.cursor/rules/kiteretsu.mdc` | `.cursor/mcp.json` | `kiteretsu init` |
+| **Gemini CLI / Antigravity** | `GEMINI.md` | `.gemini/settings.json` | `kiteretsu init` |
+| **OpenCode** | `AGENTS.md` & `.opencode/agents/` | `opencode.json` (`mcp` key) | `kiteretsu init` |
+| **OpenAI Codex** | `CODEX.md` | Universal MCP | `kiteretsu init` |
+| **GitHub Copilot** | `.github/copilot-instructions.md` | Copilot instructions | `kiteretsu init` |
+| **Generic MCP Agent** | `AGENTS.md` | `mcp.json` | `kiteretsu init` |
 
 ---
 
@@ -209,9 +212,17 @@ Run inside your repository root:
 npx kiteretsu init
 ```
 
+You can also target specific agents or install all integrations:
+
+```bash
+npx kiteretsu init --agent claude --agent cursor
+# or install all
+npx kiteretsu init --all
+```
+
 **What `kiteretsu init` does automatically:**
-1. Detects your active AI agents and IDEs.
-2. Injects managed instruction sections into agent files (`CLAUDE.md`, `.cursorrules`, etc.).
+1. Detects your active AI agents and IDEs (or prompts for selection in interactive terminal).
+2. Injects managed instruction sections into agent configuration files (`CLAUDE.md`, `.cursor/rules/kiteretsu.mdc`, `opencode.json`, etc.).
 3. Configures Kiteretsu's MCP server in your agent settings.
 4. Initializes local `.kiteretsu/` SQLite database with WAL mode.
 5. Indexes all files, symbols, and dependencies.
@@ -256,7 +267,7 @@ Kiteretsu implements the standard [Model Context Protocol (MCP)](https://modelco
 
 | Tool Name | Description |
 | :--- | :--- |
-| `kiteretsu_context` | Compiles a multi-sensor Context Pack for a coding task with confidence and evidence. |
+| `kiteretsu_context` | Compiles a multi-sensor Context Pack for a coding task with relevance score and evidence. |
 | `kiteretsu_search` | Performs hybrid semantic vector and keyword retrieval across the repository. |
 | `kiteretsu_explain` | Explains why a file or symbol is designed the way it is (source + graph + ADRs + rules + tests). |
 | `kiteretsu_symbol` | Inspects symbol declaration details, lines, and AST relationship graph. |
@@ -294,9 +305,9 @@ $ kiteretsu context "Add Stripe idempotency keys to payment service"
 Task: Add Stripe idempotency keys to payment service
 
 📁 Read First:
-  - src/services/payment.ts (89% confidence) [symbol:PaymentService, vector_sim:82%, graph:imports_target]
+  - src/services/payment.ts (89% relevance score) [symbol:PaymentService, vector_sim:82%, graph:imports_target]
     Core structures: PaymentService. Key logic: processCharge, refundTransaction.
-  - src/storage/idempotency.ts (84% confidence) [symbol:IdempotencyStore, terms:idempotency]
+  - src/storage/idempotency.ts (84% relevance score) [symbol:IdempotencyStore, terms:idempotency]
     Core structures: IdempotencyStore. Key logic: lockKey, resolveKey.
 
 📄 Optional Context:
@@ -397,7 +408,7 @@ Kiteretsu tracks 12 distinct dimensions of repository knowledge:
 │ 3. Inbound & Outbound Calls  │ 9. Episodic Task History     │
 │ 4. Type & Heritage Relations │ 10. Developer Pitfall Notes  │
 │ 5. File Imports & Exports    │ 11. Multi-Sensor Evidence    │
-│ 6. Related Test Suites       │ 12. Context Confidence Score │
+│ 6. Related Test Suites       │ 12. Composite Relevance Score│
 └──────────────────────────────┴──────────────────────────────┘
 ```
 
@@ -407,31 +418,31 @@ Every ADR includes:
 - `rationale`: Why this architectural choice was made.
 - `alternatives_considered`: Other options evaluated.
 - `affected_paths`: Exact file paths or glob patterns scoped to the decision.
-- `status`: `proposed` | `accepted` | `superseded` | `deprecated` | `rejected`
+- `status`: `proposed` | `accepted` | `superseded` | `deprecated` | `rejected` | `active`
 
 ---
 
-## 🎯 Multi-Sensor Fusion & Explainability
+## 🎯 Four-Signal Multi-Sensor Fusion & Explainability
 
-Embeddings are **one signal among five**, not the sole source of truth. Kiteretsu synthesizes:
+Embeddings are **one signal among four**, combined in a weighted fusion pipeline:
 
-1. **Lexical Sensor (35% weight)**: Exact symbol matches, identifier sub-tokens, BM25 keyword significance.
-2. **Semantic Vector Sensor (35% weight)**: Local ONNX cosine vector similarity.
-3. **Graph Proximity Sensor (20% weight)**: 1-hop and 2-hop traversal along import and call edges.
-4. **Memory Scope Sensor (10% weight)**: Scoped ADR and rule path overlap.
-5. **Governance Filter**: Rules and constraints matching candidate scopes.
+1. **Lexical Retrieval (35% weight)**: Exact and partial symbol matches, identifier sub-tokens, IDF-weighted keyword significance.
+2. **Semantic Vector Retrieval (35% weight)**: Local ONNX cosine vector similarity.
+3. **Symbol & Graph Proximity Retrieval (20% weight)**: Traverses symbol call hierarchy (`calls`, `references`), inheritance trees (`extends`, `implements`), and file imports.
+4. **Memory Scope Retrieval (10% weight)**: Correlates ADR and rule path overlap against candidate files.
 
 ### Explainable Signals Output
 Every retrieved file reports explicit evidence:
 ```json
 {
   "path": "src/services/payment.ts",
+  "relevance_score": 0.89,
   "confidence": 0.89,
   "signals": [
     "symbol:PaymentService,processCharge",
     "vector_sim:82%",
     "terms:payment,stripe",
-    "graph:imported_by_checkout.ts",
+    "graph:calls:PaymentService",
     "memory:adr_rule_match"
   ]
 }
@@ -470,6 +481,7 @@ $ kiteretsu doctor
 🤖 Agent Integrations:
   ✓ Claude Code integration: Healthy
   ✓ Cursor integration: Healthy
+  ✓ OpenCode integration: Healthy
   ✓ Generic MCP Agent / AGENTS.md integration: Healthy
 ```
 
@@ -549,8 +561,8 @@ Created automatically by `kiteretsu init`:
 - [x] **Symbol-Level Code Intelligence Graph** (`calls`, `extends`, `implements`, `references`, `exports`)
 - [x] **Architectural Decision Records (ADRs)** with lifecycle and path scoping
 - [x] **Episodic Task Memory** with semantic similarity retrieval
-- [x] **5-Sensor Hybrid Context Compiler** with explainable confidence and evidence traces
-- [x] **Zero-Friction Agent Bridge** (Claude Code, Cursor, Gemini, OpenCode, Codex, Generic)
+- [x] **Four-Signal Hybrid Context Compiler** with explainable relevance scoring and evidence traces
+- [x] **Zero-Friction Agent Bridge** (Claude Code, Cursor, Gemini CLI, OpenCode, OpenAI Codex, GitHub Copilot, Generic)
 - [x] **Canonical MCP Tools & Resources**
 - [ ] **Multi-Repository Federation** (linking frontend, backend, and shared libraries)
 - [ ] **Team Architecture Sync** (shared ADR cloud synchronization)
@@ -573,7 +585,7 @@ pnpm install
 # 3. Build all workspace packages
 pnpm build
 
-# 4. Run all 10 test suites
+# 4. Run all 10 test suites (32+ automated tests)
 pnpm test
 ```
 

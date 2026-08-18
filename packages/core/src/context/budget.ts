@@ -5,6 +5,7 @@ import { FusedCandidate } from '../retrieval/fusion-ranker.js';
 export interface ContextFileItem {
   path: string;
   summary: string;
+  relevance_score?: number;
   confidence: number;
   signals: string[];
   key_symbols?: string[];
@@ -47,6 +48,7 @@ export class ContextBudgetOptimizer {
       const item: ContextFileItem = {
         path: f.path,
         summary: f.summary || 'No summary',
+        relevance_score: f.relevance_score ?? f.confidence,
         confidence: f.confidence,
         signals: f.signals,
         key_symbols: f.key_symbols

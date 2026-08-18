@@ -8,4 +8,5 @@ export * from './gemini.js';
 export * from './opencode.js';
 export * from './cursor.js';
 export * from './codex.js';
+export * from './copilot.js';
 export * from './generic.js';
