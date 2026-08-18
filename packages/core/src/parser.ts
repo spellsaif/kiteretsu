@@ -485,6 +485,17 @@ export class CodeParser {
       return { symbols, imports };
     }
 
+    // Layer 5: Resource limits & minification guard for deep AST parsing
+    if (content.length > 1_000_000) {
+      debugLog(`[Parser] Skipping deep tree-sitter for oversized file (${content.length} bytes): ${filePath}`);
+      return { symbols, imports };
+    }
+    const sampleLines = content.slice(0, 5000).split('\n');
+    if (sampleLines.length > 0 && sampleLines[0].length > 1000) {
+      debugLog(`[Parser] Skipping deep tree-sitter for minified file: ${filePath}`);
+      return { symbols, imports };
+    }
+
     const language = await this.loadLanguage(ext);
     if (!language) return { symbols, imports };
 

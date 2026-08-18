@@ -10,3 +10,4 @@ export * from './cursor.js';
 export * from './codex.js';
 export * from './copilot.js';
 export * from './generic.js';
+export * from './selector.js';

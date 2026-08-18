@@ -45,7 +45,7 @@ export const DEFAULT_CONFIG_TEMPLATE = `import { defineConfig } from "kiteretsu"
 
 export default defineConfig({
   indexing: {
-    maxFileSize: "10MB",
+    maxFileSize: "1MB",
     deepParseLimit: "500KB",
   },
   search: {
@@ -57,7 +57,12 @@ export default defineConfig({
     "**/.git/**",
     "**/dist/**",
     "**/build/**",
+    "**/out/**",
     "**/.next/**",
+    "**/_next/**",
+    "**/.nuxt/**",
+    "**/.svelte-kit/**",
+    "**/.turbo/**",
     "**/coverage/**",
     "**/.kiteretsu/**",
   ],

@@ -20,11 +20,23 @@ export interface IndexProgressCallback {
   (current: number, total: number, message: string): void;
 }
 
+export interface SkippedLargeInfo {
+  path: string;
+  size: number;
+  limit: number;
+}
+
 export interface IndexSummary {
   files: number;
   symbols: number;
   edges: number;
   deleted?: number;
+  totalDiscovered: number;
+  skippedIgnored: number;
+  skippedLarge: SkippedLargeInfo[];
+  skippedBinary: string[];
+  skippedGenerated: string[];
+  failed: Array<{ path: string; error: string }>;
 }
 
 export class Indexer {
@@ -297,8 +309,20 @@ export class Indexer {
     await this.discoverRustCrates();
 
     if (onProgress) onProgress(0, 100, 'Scanning files...');
-    const files = await this.scanner.scan();
+    const scanResult = await this.scanner.scanDetailed();
+    const files = scanResult.files;
     const knex = this.db.getKnex();
+
+    const failedFiles: Array<{ path: string; error: string }> = [];
+    const skippedLarge = scanResult.skipped
+      .filter(s => s.reason === 'large')
+      .map(s => ({ path: s.path, size: s.size || 0, limit: s.limit || this.scanner.getMaxFileSize() }));
+    const skippedBinary = scanResult.skipped
+      .filter(s => s.reason === 'binary')
+      .map(s => s.path);
+    const skippedGenerated = scanResult.skipped
+      .filter(s => s.reason === 'generated' || s.reason === 'vendor')
+      .map(s => s.path);
 
     this.fileSystemCache.clear();
     for (const f of files) {
@@ -377,6 +401,7 @@ export class Indexer {
           onProgress(10 + Math.floor((processedCount / toProcess) * 20), 100, `Parsing: ${relativePath}`);
         }
       } catch (error: any) {
+        failedFiles.push({ path: relativePath, error: error.message || 'Unknown parsing error' });
         const debugLog = path.resolve(this.rootDir, '.kiteretsu', 'debug.log');
         try { fs.appendFileSync(debugLog, `[Indexer] Error parsing ${relativePath}: ${error.message}\n`); } catch { }
       }
@@ -518,7 +543,18 @@ export class Indexer {
     if (onProgress) onProgress(100, 100, 'Indexing complete');
 
     const counts = await this.graphStore.getCounts();
-    return { files: fileMap.size, symbols: counts.symbols, edges: counts.edges, deleted: deletedFiles.length };
+    return {
+      files: fileMap.size,
+      symbols: counts.symbols,
+      edges: counts.edges,
+      deleted: deletedFiles.length,
+      totalDiscovered: scanResult.totalDiscovered,
+      skippedIgnored: Math.max(0, scanResult.totalDiscovered - files.length),
+      skippedLarge,
+      skippedBinary,
+      skippedGenerated,
+      failed: failedFiles
+    };
   }
 
   async removeFile(filePath: string): Promise<void> {

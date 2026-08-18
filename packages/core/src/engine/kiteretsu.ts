@@ -92,7 +92,8 @@ export class Kiteretsu {
         rootDir: this.rootDir,
         include: this.config.indexing?.include,
         exclude: this.config.indexing?.exclude,
-        ignore: this.config.ignore
+        ignore: this.config.ignore,
+        maxFileSize: this.config.indexing?.maxFileSize
       };
       this._scanner = new Scanner(scanOptions);
     }

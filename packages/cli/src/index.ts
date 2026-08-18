@@ -11,7 +11,8 @@ import {
   AgentDetector,
   AgentInstaller,
   AgentUpdater,
-  AgentDoctor
+  AgentDoctor,
+  AgentSelector
 } from '@spellsaif/kiteretsu-agent-bridge';
 import path from 'path';
 import fs from 'fs-extra';
@@ -67,7 +68,7 @@ console.log(chalk.gray(`  Root: ${rootDir}\n`));
 program
   .name('kiteretsu')
   .description('Continuous Code Intelligence Graph and Memory Layer for AI coding agents')
-  .version('0.1.0');
+  .version('0.1.2');
 
 // ─── 1. INIT COMMAND (Primary Onboarding) ───
 program
@@ -75,65 +76,79 @@ program
   .description('One-command onboarding: detect repo, configure agents & MCP, initialize and index')
   .option('-a, --agent <agents...>', 'Specific agent integrations to configure (claude, gemini, opencode, cursor, codex, copilot, generic)')
   .option('--all', 'Configure all available agent integrations')
+  .option('--no-agent', 'Initialize repository intelligence only and skip all agent bridge integrations')
+  .option('--non-interactive', 'Run non-interactively without interactive prompts')
   .action(async (options) => {
     console.log(chalk.bold.cyan('🔍 Detecting environment & AI coding agents...\n'));
     const detector = new AgentDetector();
-    let selectedAgentIds: string[] = [];
+    const allIntegrations = detector.getAllIntegrations();
+    const detected = await detector.detect(rootDir);
 
-    if (options.all) {
-      selectedAgentIds = detector.getAllIntegrations().map(i => i.id);
-      console.log(chalk.bold('Configuring all integrations:'));
-      detector.getAllIntegrations().forEach(d => console.log(chalk.green(`  ✓ ${d.name}`)));
-    } else if (options.agent && options.agent.length > 0) {
-      selectedAgentIds = options.agent;
-      console.log(chalk.bold('Configuring specified integrations:'));
-      selectedAgentIds.forEach(id => {
-        const integ = detector.getIntegration(id);
-        console.log(chalk.green(`  ✓ ${integ?.name || id}`));
-      });
+    if (detected.length > 0) {
+      console.log(chalk.bold('Detected:'));
+      detected.forEach(d => console.log(chalk.green(`  ✓ ${d.name}`)));
+      console.log('');
     } else {
-      const detected = await detector.detect(rootDir);
-      if (detected.length > 0) {
-        console.log(chalk.bold('Detected:'));
-        detected.forEach(d => console.log(chalk.green(`  ✓ ${d.name}`)));
-        selectedAgentIds = detected.map(d => d.id);
-      } else if (process.stdout.isTTY) {
-        console.log(chalk.yellow('  ℹ No specific agent configuration detected.\n'));
-        const answers = await inquirer.prompt([
-          {
-            type: 'checkbox',
-            name: 'selectedAgents',
-            message: 'Select AI coding agents to configure with Kiteretsu:',
-            choices: detector.getAllIntegrations().map(i => ({
-              name: i.name,
-              value: i.id,
-              checked: i.id === 'generic'
-            }))
-          }
-        ]);
-        selectedAgentIds = answers.selectedAgents.length > 0 ? answers.selectedAgents : ['generic'];
-      } else {
-        console.log(chalk.yellow('  ℹ No specific agent detected. Configuring universal AGENTS.md & MCP.'));
-        selectedAgentIds = ['generic'];
-      }
+      console.log(chalk.yellow('  ℹ No specific agent configuration detected.\n'));
     }
 
-    console.log(chalk.bold.cyan('\n⚙ Installing Kiteretsu Agent Bridge & MCP...'));
-    const installer = new AgentInstaller(detector);
-    const installResult = await installer.install({ rootDir }, selectedAgentIds);
+    // Step 2 & 3: Propose and Select integrations
+    let selectedAgentIds: string[] = [];
+    const explicitSelection = AgentSelector.resolveExplicit(options, allIntegrations, detected);
 
-    installResult.installed.forEach(i => {
-      console.log(chalk.green(`  ✓ ${i.name} managed instructions`));
-    });
-    console.log(chalk.green('  ✓ MCP Server configuration'));
+    if (explicitSelection !== null) {
+      selectedAgentIds = explicitSelection;
+      if (options.noAgent) {
+        console.log(chalk.gray('  ○ Agent integrations skipped (--no-agent)'));
+      } else if (options.all) {
+        console.log(chalk.bold('Configuring all integrations:'));
+        allIntegrations.forEach(d => console.log(chalk.green(`  ✓ ${d.name}`)));
+      } else if (options.agent && options.agent.length > 0) {
+        console.log(chalk.bold('Configuring specified integrations:'));
+        selectedAgentIds.forEach(id => {
+          const integ = detector.getIntegration(id);
+          console.log(chalk.green(`  ✓ ${integ?.name || id}`));
+        });
+      }
+    } else if (process.stdout.isTTY && !options.nonInteractive) {
+      const proposals = AgentSelector.propose(allIntegrations, detected);
+      const answers = await inquirer.prompt([
+        {
+          type: 'checkbox',
+          name: 'selectedAgents',
+          message: 'Select AI coding agents to configure with Kiteretsu:',
+          choices: proposals.map(p => ({
+            name: p.name + (p.detected ? chalk.green(' (detected)') : ''),
+            value: p.id,
+            checked: p.selectedByDefault
+          }))
+        }
+      ]);
+      selectedAgentIds = answers.selectedAgents || [];
+    } else {
+      selectedAgentIds = detected.length > 0 ? detected.map(d => d.id) : ['generic'];
+    }
 
-    // Option A: Explicitly ensure canonical kiteretsu.config.ts exists
+    // Step 4: Install selected integrations
+    if (selectedAgentIds.length > 0) {
+      console.log(chalk.bold.cyan('\n⚙ Installing Kiteretsu Agent Bridge & MCP...'));
+      const installer = new AgentInstaller(detector);
+      const installResult = await installer.install({ rootDir }, selectedAgentIds);
+
+      installResult.installed.forEach(i => {
+        console.log(chalk.green(`  ✓ ${i.name} managed instructions`));
+      });
+      console.log(chalk.green('  ✓ MCP Server configuration'));
+    }
+
+    // Step 5: Canonical configuration file
     const tsConfigPath = path.join(rootDir, 'kiteretsu.config.ts');
     if (!fs.existsSync(tsConfigPath)) {
       await createDefaultConfigFile(rootDir);
       console.log(chalk.green('  ✓ Created canonical kiteretsu.config.ts'));
     }
 
+    // Step 6: Database initialization
     const spinner = ora('Initializing repository intelligence database...').start();
     try {
       await getKiteretsu().init();
@@ -143,6 +158,7 @@ program
       process.exit(1);
     }
 
+    // Step 7: Multi-layer safe indexing
     console.log(chalk.bold.cyan('\n📦 Indexing repository...'));
     const progressBar = new cliProgress.SingleBar({
       format: chalk.cyan('  Indexing ') + '|' + chalk.cyan('{bar}') + '| {percentage}% | {message}',
@@ -159,16 +175,42 @@ program
       progressBar.update(100, { message: 'Complete!' });
       progressBar.stop();
 
+      // Show warnings for any skipped large files
+      if (stats.skippedLarge && stats.skippedLarge.length > 0) {
+        console.log(chalk.yellow(`\n⚠️  Skipped ${stats.skippedLarge.length} large files (> 1 MB):`));
+        stats.skippedLarge.slice(0, 5).forEach(f => {
+          const sizeMb = (f.size / (1024 * 1024)).toFixed(1);
+          console.log(chalk.yellow(`  ⚠ ${f.path} (${sizeMb} MB)`));
+        });
+        if (stats.skippedLarge.length > 5) {
+          console.log(chalk.yellow(`  ... and ${stats.skippedLarge.length - 5} more large files`));
+        }
+      }
+
+      // Summary
+      const summaryLines = [
+        chalk.bold.green('✓ Kiteretsu initialized successfully!'),
+        '',
+        chalk.white(`Files indexed:    ${chalk.bold.cyan(String(stats.files))}`),
+        chalk.white(`Symbols found:    ${chalk.bold.cyan(String(stats.symbols))}`),
+        chalk.white(`Dependencies:     ${chalk.bold.cyan(String(stats.edges))}`)
+      ];
+
+      const skipParts: string[] = [];
+      if (stats.skippedIgnored > 0) skipParts.push(`${stats.skippedIgnored} ignored/generated`);
+      if (stats.skippedLarge && stats.skippedLarge.length > 0) skipParts.push(`${stats.skippedLarge.length} large files`);
+      if (stats.skippedBinary && stats.skippedBinary.length > 0) skipParts.push(`${stats.skippedBinary.length} binary files`);
+
+      if (skipParts.length > 0) {
+        summaryLines.push('');
+        summaryLines.push(chalk.gray(`Skipped: ${skipParts.join(', ')}`));
+      }
+
+      summaryLines.push('');
+      summaryLines.push(chalk.gray('Your AI coding agents now automatically query Kiteretsu before making changes.'));
+
       console.log('\n' + boxen(
-        [
-          chalk.bold.green('✨ Kiteretsu is ready!'),
-          '',
-          chalk.white(`Files indexed:    ${chalk.bold.cyan(String(stats.files))}`),
-          chalk.white(`Symbols found:    ${chalk.bold.cyan(String(stats.symbols))}`),
-          chalk.white(`Dependencies:     ${chalk.bold.cyan(String(stats.edges))}`),
-          '',
-          chalk.gray('Your AI coding agents now automatically query Kiteretsu before making changes.')
-        ].join('\n'),
+        summaryLines.join('\n'),
         { padding: 1, margin: 1, borderStyle: 'round', borderColor: 'green' }
       ));
 
@@ -484,12 +526,38 @@ program
       progressBar.update(100, { message: 'Complete!' });
       progressBar.stop();
 
+      // Show warnings for any skipped large files
+      if (stats.skippedLarge && stats.skippedLarge.length > 0) {
+        console.log(chalk.yellow(`\n⚠️  Skipped ${stats.skippedLarge.length} large files (> 1 MB):`));
+        stats.skippedLarge.slice(0, 5).forEach(f => {
+          const sizeMb = (f.size / (1024 * 1024)).toFixed(1);
+          console.log(chalk.yellow(`  ⚠ ${f.path} (${sizeMb} MB)`));
+        });
+        if (stats.skippedLarge.length > 5) {
+          console.log(chalk.yellow(`  ... and ${stats.skippedLarge.length - 5} more large files`));
+        }
+      }
+
+      const summaryLines = [
+        chalk.bold.green('✓ Index complete'),
+        '',
+        chalk.white(`Files indexed:    ${chalk.bold.cyan(String(stats.files))}`),
+        chalk.white(`Symbols found:    ${chalk.bold.cyan(String(stats.symbols))}`),
+        chalk.white(`Dependencies:     ${chalk.bold.cyan(String(stats.edges))}`)
+      ];
+
+      const skipParts: string[] = [];
+      if (stats.skippedIgnored > 0) skipParts.push(`${stats.skippedIgnored} ignored/generated`);
+      if (stats.skippedLarge && stats.skippedLarge.length > 0) skipParts.push(`${stats.skippedLarge.length} large files`);
+      if (stats.skippedBinary && stats.skippedBinary.length > 0) skipParts.push(`${stats.skippedBinary.length} binary files`);
+
+      if (skipParts.length > 0) {
+        summaryLines.push('');
+        summaryLines.push(chalk.gray(`Skipped: ${skipParts.join(', ')}`));
+      }
+
       console.log('\n' + boxen(
-        [
-          chalk.white(`Files indexed:    ${chalk.bold.cyan(String(stats.files))}`),
-          chalk.white(`Symbols found:    ${chalk.bold.cyan(String(stats.symbols))}`),
-          chalk.white(`Dependencies:     ${chalk.bold.cyan(String(stats.edges))}`)
-        ].join('\n'),
+        summaryLines.join('\n'),
         { padding: 1, margin: 1, borderStyle: 'round', borderColor: 'green' }
       ));
       await getKiteretsu().destroy();

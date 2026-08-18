@@ -1,0 +1,1 @@
+(self.webpackChunk_N_E=self.webpackChunk_N_E||[]).push([[404],{404:function(e,t,n){"use strict";Object.defineProperty(t,"__esModule",{value:!0});var r=n(7294);function p(){return r.createElement("div",null,"Public Next static chunk")}t.default=p}}]);
