@@ -68,7 +68,7 @@ console.log(chalk.gray(`  Root: ${rootDir}\n`));
 program
   .name('kiteretsu')
   .description('Continuous Code Intelligence Graph and Memory Layer for AI coding agents')
-  .version('0.1.2');
+  .version('0.1.3');
 
 // ─── 1. INIT COMMAND (Primary Onboarding) ───
 program
