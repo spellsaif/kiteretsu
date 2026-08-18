@@ -93,6 +93,36 @@ export class Database {
         table.index(['target_type', 'target_id', 'relation']);
         table.index(['relation']);
       });
+    } else {
+      // Migration: Ensure legacy foreign keys to files are removed for polymorphic edges
+      try {
+        const fkList = await this.db.raw('PRAGMA foreign_key_list(graph_edges)');
+        if (fkList && fkList.length > 0) {
+          await this.db.schema.createTable('graph_edges_new', (table) => {
+            table.increments('id').primary();
+            table.string('source_type').notNullable();
+            table.integer('source_id').notNullable();
+            table.string('relation').notNullable();
+            table.string('target_type').notNullable();
+            table.integer('target_id').notNullable();
+            table.float('confidence').defaultTo(1.0);
+            table.string('provenance');
+            table.timestamps(true, true);
+
+            table.unique(['source_type', 'source_id', 'relation', 'target_type', 'target_id']);
+            table.index(['source_type', 'source_id', 'relation']);
+            table.index(['target_type', 'target_id', 'relation']);
+            table.index(['relation']);
+          });
+
+          await this.db.raw(`
+            INSERT OR IGNORE INTO graph_edges_new (id, source_type, source_id, relation, target_type, target_id, confidence, provenance, created_at, updated_at)
+            SELECT id, source_type, source_id, relation, target_type, target_id, confidence, provenance, created_at, updated_at FROM graph_edges
+          `);
+          await this.db.schema.dropTable('graph_edges');
+          await this.db.raw('ALTER TABLE graph_edges_new RENAME TO graph_edges');
+        }
+      } catch { }
     }
 
     if (!(await this.db.schema.hasTable('tasks'))) {
