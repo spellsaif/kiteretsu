@@ -30,7 +30,7 @@ Kiteretsu enforces your project's "Laws." By recording architectural rules, you 
 ## ⚡ Key Features
 
 - **Hybrid AST/Regex Engine**: High-fidelity parsing for source code, lightning-fast discovery for large assets.
-- **Zero-Noise Scanner**: Multi-layer filtering via `.kiteretsuignore` and built-in "Garbage Collection" for lockfiles and build artifacts.
+- **Zero-Noise Scanner**: Multi-layer filtering via `kiteretsu.config.ts` `ignore` rules and built-in filtering for lockfiles and build artifacts.
 - **Atomic Watcher**: A stable, battery-optimized watcher built to handle the complexities of Windows and massive Monorepos.
 - **Local-First Privacy**: Your codebase never leaves your machine. All embeddings and indexing happen locally.
 

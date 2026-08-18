@@ -13,7 +13,7 @@ Kiteretsu is designed as a **High-Performance Hybrid Intelligence Pipeline**. In
 ```mermaid
 graph TD
     A[Disk: Source Code] --> B{Scanner: 4-Layer Sieve}
-    B -- Ignored --> C[Skip: .gitignore / .kiteretsuignore]
+    B -- Ignored --> C[Skip: .gitignore / kiteretsu.config.ts ignore]
     B -- Accepted --> D{Parser: Hybrid Engine}
     
     D -- < 500KB --> E[Deep AST: Tree-sitter]
@@ -64,9 +64,9 @@ Kiteretsu processes your code through four distinct layers to ensure your AI age
 
 ### 1. The Scanner (The Filter)
 The scanner is the first line of defense against "Context Bloat." 
-- **4-Layer Sieve**: It filters noise through the Global Blacklist, your `.kiteretsuignore`, machine-generated "garbage" (lockfiles), and physical size guardrails.
+- **4-Layer Sieve**: It filters noise through the Global Blacklist, your `kiteretsu.config.ts` `ignore` patterns, machine-generated "garbage" (lockfiles), and physical size guardrails.
 - **Size Awareness**: Files > 10MB are automatically skipped to protect system memory.
-- **Standardized Governance**: All exclusions are managed via `.kiteretsuignore`, ensuring your index is clean from the start.
+- **Standardized Governance**: All exclusions are managed directly via `kiteretsu.config.ts`, ensuring your index is clean from the start.
 
 ### 2. The Parser (The Hybrid Engine)
 This is where the "translation" happens. Kiteretsu uses a **Hybrid Parsing Strategy**:

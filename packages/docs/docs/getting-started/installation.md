@@ -28,9 +28,10 @@ kiteretsu init
 ```
 
 This will:
-1. Create a `.kiteretsu` directory for internal metadata and database.
-2. Generate a **`kiteretsu.config.json`** in your project root for behavioral settings.
-3. Generate a **`.kiteretsuignore`** in your project root to manage indexing exclusions.
+1. Detect repository ecosystem and available AI agents.
+2. Generate canonical **`kiteretsu.config.ts`** in your project root.
+3. Configure agent instructions (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`) and MCP servers.
+4. Initialize the `.kiteretsu/` runtime storage directory.
 
 ## Your First Index
 

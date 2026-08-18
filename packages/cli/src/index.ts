@@ -5,7 +5,7 @@ import ora from 'ora';
 import cliProgress from 'cli-progress';
 import boxen from 'boxen';
 import gradient from 'gradient-string';
-import { Kiteretsu } from '@kiteretsu/core';
+import { Kiteretsu, loadProjectConfigSync } from '@kiteretsu/core';
 import { CodeWatcher } from '@kiteretsu/core/watcher.js';
 import {
   AgentDetector,
@@ -46,32 +46,11 @@ function findWorkspaceRoot(startDir: string): string {
   return startDir;
 }
 
-export { defineConfig } from '@kiteretsu/core';
+export { defineConfig, loadProjectConfig, loadProjectConfigSync } from '@kiteretsu/core';
 
 const rootDir = findWorkspaceRoot(process.cwd());
-const config = { rootDir };
-
-// Read kiteretsu.config.ts / .mjs / .js / .json if available
-const tsConfigPath = path.join(rootDir, 'kiteretsu.config.ts');
-const jsonConfigPath = path.join(rootDir, 'kiteretsu.config.json');
-
-if (fs.existsSync(tsConfigPath)) {
-  try {
-    const content = fs.readFileSync(tsConfigPath, 'utf8');
-    const ignoreMatch = content.match(/ignore\s*:\s*\[([\s\S]*?)\]/);
-    if (ignoreMatch) {
-      (config as any).ignore = ignoreMatch[1]
-        .split(',')
-        .map(s => s.trim().replace(/^['"`]|['"`]$/g, ''))
-        .filter(Boolean);
-    }
-  } catch (e) { }
-} else if (fs.existsSync(jsonConfigPath)) {
-  try {
-    const fileConfig = fs.readJsonSync(jsonConfigPath);
-    Object.assign(config, fileConfig);
-  } catch (e) { }
-}
+const userConfig = loadProjectConfigSync(rootDir);
+const config = { ...userConfig, rootDir };
 
 let kiteretsuInstance: Kiteretsu | null = null;
 function getKiteretsu() {

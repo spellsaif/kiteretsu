@@ -14,6 +14,16 @@ export interface KiteretsuSearchConfig {
   provider?: 'transformers' | 'remote';
 }
 
+export interface KiteretsuAgentsConfig {
+  autoConfigure?: boolean;
+  active?: string[];
+}
+
+export interface KiteretsuMemoryConfig {
+  enabled?: boolean;
+  autoRecordTasks?: boolean;
+}
+
 export interface KiteretsuConfig {
   rootDir?: string;
   dbPath?: string;
@@ -23,8 +33,8 @@ export interface KiteretsuConfig {
   search?: KiteretsuSearchConfig;
   ignore?: string[];
   languages?: Record<string, unknown>;
-  memory?: Record<string, unknown>;
-  agents?: Record<string, unknown>;
+  memory?: KiteretsuMemoryConfig;
+  agents?: KiteretsuAgentsConfig;
 }
 
 export function defineConfig(config: KiteretsuConfig): KiteretsuConfig {
@@ -55,26 +65,41 @@ export default defineConfig({
 `;
 
 /**
- * Loads project configuration from canonical kiteretsu.config.ts,
- * with fallback to .js, .mjs, or .json.
+ * Loads project configuration from canonical kiteretsu.config.ts (or .js/.mjs).
  */
 export async function loadProjectConfig(rootDir: string): Promise<KiteretsuConfig> {
   const tsPath = path.join(rootDir, 'kiteretsu.config.ts');
   const mjsPath = path.join(rootDir, 'kiteretsu.config.mjs');
   const jsPath = path.join(rootDir, 'kiteretsu.config.js');
-  const jsonPath = path.join(rootDir, 'kiteretsu.config.json');
 
   // 1. Try TypeScript config
   if (await fs.pathExists(tsPath)) {
     try {
       const fileUrl = `${pathToFileURL(tsPath).href}?t=${Date.now()}`;
       const mod = await import(fileUrl);
-      if (mod.default) return mod.default;
-      if (mod.config) return mod.config;
+      const conf = mod.default || mod.config || mod;
+      if (conf && typeof conf === 'object') return conf;
     } catch {
-      // Fallback: parse basic structure if dynamic TS loader is unavailable
-      const parsed = parseConfigText(await fs.readFile(tsPath, 'utf8'));
-      if (parsed) return parsed;
+      // If direct TS import is not supported natively by the Node runtime,
+      // transpile in-memory or write to .kiteretsu/cache/config.mjs
+      try {
+        const rawTs = await fs.readFile(tsPath, 'utf8');
+        const transpiledJs = transpileTsConfig(rawTs);
+        const cacheDir = path.join(rootDir, '.kiteretsu', 'cache');
+        await fs.ensureDir(cacheDir);
+        const tempMjs = path.join(cacheDir, `config.${Date.now()}.mjs`);
+        await fs.writeFile(tempMjs, transpiledJs, 'utf8');
+        try {
+          const mod = await import(`${pathToFileURL(tempMjs).href}`);
+          const conf = mod.default || mod.config || mod;
+          if (conf && typeof conf === 'object') return conf;
+        } finally {
+          await fs.remove(tempMjs).catch(() => {});
+        }
+      } catch {
+        const parsed = parseConfigText(await fs.readFile(tsPath, 'utf8'));
+        if (parsed) return parsed;
+      }
     }
   }
 
@@ -84,8 +109,8 @@ export async function loadProjectConfig(rootDir: string): Promise<KiteretsuConfi
       try {
         const fileUrl = `${pathToFileURL(p).href}?t=${Date.now()}`;
         const mod = await import(fileUrl);
-        if (mod.default) return mod.default;
-        if (mod.config) return mod.config;
+        const conf = mod.default || mod.config || mod;
+        if (conf && typeof conf === 'object') return conf;
       } catch {
         const parsed = parseConfigText(await fs.readFile(p, 'utf8'));
         if (parsed) return parsed;
@@ -93,14 +118,38 @@ export async function loadProjectConfig(rootDir: string): Promise<KiteretsuConfi
     }
   }
 
-  // 3. Try legacy JSON config
-  if (await fs.pathExists(jsonPath)) {
-    try {
-      return await fs.readJson(jsonPath);
-    } catch { }
-  }
-
   return {};
+}
+
+/**
+ * Synchronously loads project configuration from canonical kiteretsu.config.ts.
+ */
+export function loadProjectConfigSync(rootDir: string): KiteretsuConfig {
+  const tsPath = path.join(rootDir, 'kiteretsu.config.ts');
+  const mjsPath = path.join(rootDir, 'kiteretsu.config.mjs');
+  const jsPath = path.join(rootDir, 'kiteretsu.config.js');
+
+  for (const p of [tsPath, mjsPath, jsPath]) {
+    if (fs.existsSync(p)) {
+      try {
+        const content = fs.readFileSync(p, 'utf8');
+        const parsed = parseConfigText(content);
+        if (parsed) return parsed;
+      } catch { }
+    }
+  }
+  return {};
+}
+
+/**
+ * Lightweight TypeScript to ESM transpiler for configuration files.
+ */
+function transpileTsConfig(tsCode: string): string {
+  // Strip import statements referencing "kiteretsu" or external modules for defineConfig
+  let js = tsCode.replace(/import\s*\{[^}]*\}\s*from\s*['"][^'"]+['"]\s*;?/g, '');
+  // Provide an inline defineConfig mock so default export evaluates cleanly
+  js = `const defineConfig = (c) => c;\n` + js;
+  return js;
 }
 
 /**
@@ -119,7 +168,7 @@ function parseConfigText(content: string): KiteretsuConfig | null {
         .filter(Boolean);
     }
 
-    // Extract maxFileSize
+    // Extract maxFileSize & deepParseLimit
     const maxFileMatch = content.match(/maxFileSize\s*:\s*['"`](.*?)['"`]/);
     const deepParseMatch = content.match(/deepParseLimit\s*:\s*['"`](.*?)['"`]/);
     if (maxFileMatch || deepParseMatch) {

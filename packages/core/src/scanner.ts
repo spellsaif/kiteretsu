@@ -53,6 +53,7 @@ const GLOBAL_BLACK_LIST = [
   '**/temp/**',
   '**/tmp/**',
   '**/scratch/**',
+  '**/temp_test_*/**',
   
   // Engine Specific
   '**/.kiteretsu/**',
@@ -86,37 +87,16 @@ export class Scanner {
     return this._hasher;
   }
 
-  /**
-   * Loads custom ignore patterns from .kiteretsuignore if it exists.
-   */
-  private async loadIgnoreFile(): Promise<string[]> {
-    const ignorePath = path.join(this.options.rootDir, '.kiteretsuignore');
-    if (fs.existsSync(ignorePath)) {
-      try {
-        const content = await fs.readFile(ignorePath, 'utf8');
-        return content
-          .split('\n')
-          .map(line => line.trim())
-          .filter(line => line && !line.startsWith('#'));
-      } catch (e) {
-        return [];
-      }
-    }
-    return [];
-  }
-
   async scan(pattern?: string | string[]) {
     const include = pattern || this.options.include || ['**/*'];
     
-    // Level 1: Combine Static Blacklist, Project Ignore, and User Options
-    const customIgnores = await this.loadIgnoreFile();
+    // Level 1: Combine Static Blacklist, Garbage Patterns, and User Options
     const exclude = [
       ...new Set([
         ...GLOBAL_BLACK_LIST,
         ...GARBAGE_PATTERNS,
         ...(this.options.exclude || []),
-        ...(this.options.ignore || []),
-        ...customIgnores
+        ...(this.options.ignore || [])
       ])
     ];
 
@@ -168,13 +148,12 @@ export class Scanner {
    * Returns the combined list of all ignore patterns.
    */
   async getExcludes(): Promise<string[]> {
-    const customIgnores = await this.loadIgnoreFile();
     return [
       ...new Set([
         ...GLOBAL_BLACK_LIST,
         ...GARBAGE_PATTERNS,
         ...(this.options.exclude || []),
-        ...customIgnores
+        ...(this.options.ignore || [])
       ])
     ];
   }

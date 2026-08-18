@@ -1,60 +1,68 @@
 # Configuration
 
-Kiteretsu uses two simple files to govern its behavior and intelligence. Both are located in your project root.
+Kiteretsu uses a single, canonical TypeScript configuration file: **`kiteretsu.config.ts`** located in your project root.
 
 ---
 
-## 1. `kiteretsu.config.json`
+## Canonical Configuration (`kiteretsu.config.ts`)
 
-This file controls the **behavior** of the Kiteretsu engine.
+Created automatically by `kiteretsu init`:
 
-```json
-{
-  "name": "my-project",
-  "version": "1.0.0",
-  "indexing": {
-    "maxFileSize": "10MB",
-    "deepParseLimit": "500KB"
+```typescript
+import { defineConfig } from "kiteretsu";
+
+export default defineConfig({
+  indexing: {
+    maxFileSize: "10MB",
+    deepParseLimit: "500KB",
   },
-  "search": {
-    "precision": "high"
-  }
-}
+  search: {
+    precision: "high",
+    provider: "transformers",
+  },
+  ignore: [
+    "**/node_modules/**",
+    "**/.git/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/.next/**",
+    "**/coverage/**",
+    "**/.kiteretsu/**",
+  ],
+});
 ```
 
-### Properties
+---
 
+## Configuration Properties
+
+### Indexing (`indexing`)
 | Property | Description | Default |
 | :--- | :--- | :--- |
-| `name` | Your project name. | Directory name |
-| `version` | Your project version. | `1.0.0` |
-| `indexing.maxFileSize` | The absolute limit for indexing a file. Files larger than this are skipped. | `10MB` |
-| `indexing.deepParseLimit` | Files smaller than this get full AST analysis. Larger files get "Lite" Regex analysis. | `500KB` |
-| `search.precision` | The semantic search precision level (`low`, `medium`, `high`). | `high` |
+| `maxFileSize` | Absolute limit for file indexing. Files larger than this are skipped. | `"10MB"` |
+| `deepParseLimit` | Files smaller than this receive full Tree-sitter AST symbol extraction. | `"500KB"` |
+| `include` | Optional glob array of files to index. | `["**/*"]` |
+| `exclude` | Optional glob array of paths to exclude from indexing. | `[]` |
+
+### Search & Embeddings (`search`)
+| Property | Description | Default |
+| :--- | :--- | :--- |
+| `precision` | The semantic search precision level (`"low"`, `"medium"`, `"high"`). | `"high"` |
+| `provider` | Embedding and retrieval provider (`"transformers"` or `"remote"`). | `"transformers"` |
+
+### Exclusions (`ignore`)
+Array of glob patterns to exclude from code scanning and symbol graph generation:
+- `**/node_modules/**`
+- `**/.git/**`
+- `**/dist/**`, `**/build/**`, `**/target/**`
+- `**/.next/**`, `**/.nuxt/**`, `**/.svelte-kit/**`
+- `**/coverage/**`
 
 ---
 
-## 2. `.kiteretsuignore`
+## Single Source of Truth
 
-This file controls the **governance** of your files. It uses the same syntax as `.gitignore`.
-
-### Default Patterns
-When you run `kiteretsu init`, this file is pre-populated with standard industry ignores:
-- `node_modules/`
-- `dist/`, `build/`, `out/`
-- `.git/`
-- `*.log`, `*.tmp`
-
-### How it works
-1. **Global Blacklist**: Kiteretsu always ignores system-critical folders like `.git` and `node_modules`.
-2. **.kiteretsuignore**: Overrides and adds project-specific rules.
-3. **Smart Filtering**: Kiteretsu automatically excludes "Garbage" files like lockfiles (`pnpm-lock.yaml`, `package-lock.json`) to keep your search results clean.
-
----
-
-## Why Two Files?
-
-- **Governance (`.kiteretsuignore`)**: Tells Kiteretsu **where** to look.
-- **Behavior (`kiteretsu.config.json`)**: Tells Kiteretsu **how** to think.
-
-By separating these, you can easily share your ignore rules with your team while keeping your engine settings flexible.
+Kiteretsu establishes a clean separation of concerns:
+- **`kiteretsu.config.ts`**: User-authored project configuration and ignore rules.
+- **`AGENTS.md` / `CLAUDE.md` / `.cursor/rules/`**: AI Agent instruction files.
+- **`.kiteretsu/`**: Internal SQLite WAL database, indices, and runtime cache (never manually edited).

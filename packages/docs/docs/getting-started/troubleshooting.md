@@ -24,9 +24,9 @@ If a file exists on disk but Kiteretsu can't find it:
 
 ### 1. Check the 4-Layer Sieve
 Kiteretsu might be automatically ignoring the file if it matches one of these:
-- It is listed in your **`.kiteretsuignore`**.
+- It is listed in your **`kiteretsu.config.ts`** `ignore` list.
 - It is a "Garbage" file (e.g., a lockfile like `pnpm-lock.yaml`).
-- it is a binary file (images, PDFs, WASM).
+- It is a binary file (images, PDFs, WASM).
 
 ### 2. Verify File Size
 Files larger than **10MB** are registered but not deeply indexed. They won't appear in symbol searches or semantic context packs to protect engine stability.

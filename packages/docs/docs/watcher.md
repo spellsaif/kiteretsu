@@ -36,13 +36,13 @@ Without a watcher, your AI agent is essentially "blind" to any changes you've ma
 The watcher uses **Zero-CPU idle**. It doesn't scan your files constantly; it only wakes up for 50ms when a file is actually modified.
 
 ### 🏗️ Monorepo Ready
-Kiteretsu's watcher handles large monorepos with thousands of files, automatically respecting your **`.kiteretsuignore`** and **`kiteretsu.config.json`** settings to stay lightweight and focused.
+Kiteretsu's watcher handles large monorepos with thousands of files, automatically respecting your **`kiteretsu.config.ts`** `ignore` settings to stay lightweight and focused.
 
 ---
 
 ## Configuration
 
 The watcher automatically inherits all exclusions defined in:
-1. Your **`.kiteretsuignore`** file.
-2. The **`indexing.exclude`** patterns in `kiteretsu.config.json`.
+1. Your **`kiteretsu.config.ts`** `ignore` array.
+2. The **`indexing.exclude`** patterns in `kiteretsu.config.ts`.
 3. Standard global ignores (`node_modules`, `.git`, etc.).

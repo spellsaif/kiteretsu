@@ -88,39 +88,12 @@ export class Kiteretsu {
 
   get scanner(): Scanner {
     if (!this._scanner) {
-      const tsConfigPath = path.join(this.rootDir, 'kiteretsu.config.ts');
-      const rootConfigPath = path.join(this.rootDir, 'kiteretsu.config.json');
-      const internalConfigPath = path.join(this.rootDir, '.kiteretsu', 'config.json');
-
-      let scanOptions: ScanOptions = { rootDir: this.rootDir };
-
-      if (fs.existsSync(tsConfigPath)) {
-        try {
-          const content = fs.readFileSync(tsConfigPath, 'utf8');
-          const ignoreMatch = content.match(/ignore\s*:\s*\[([\s\S]*?)\]/);
-          if (ignoreMatch) {
-            scanOptions.ignore = ignoreMatch[1]
-              .split(',')
-              .map(s => s.trim().replace(/^['"`]|['"`]$/g, ''))
-              .filter(Boolean);
-          }
-        } catch { }
-      } else {
-        const configPath = fs.existsSync(rootConfigPath) ? rootConfigPath : (fs.existsSync(internalConfigPath) ? internalConfigPath : null);
-        if (configPath) {
-          try {
-            const fileConfig = fs.readJsonSync(configPath);
-            if (fileConfig.indexing) {
-              scanOptions.include = fileConfig.indexing.include;
-              scanOptions.exclude = fileConfig.indexing.exclude;
-            }
-            if (fileConfig.ignore) {
-              scanOptions.ignore = fileConfig.ignore;
-            }
-          } catch { }
-        }
-      }
-
+      const scanOptions: ScanOptions = {
+        rootDir: this.rootDir,
+        include: this.config.indexing?.include,
+        exclude: this.config.indexing?.exclude,
+        ignore: this.config.ignore
+      };
       this._scanner = new Scanner(scanOptions);
     }
     return this._scanner;
@@ -197,8 +170,7 @@ export class Kiteretsu {
     await fs.ensureDir(path.join(kiteretsuDir, 'memory'));
 
     const tsConfigPath = path.join(this.rootDir, 'kiteretsu.config.ts');
-    const jsonConfigPath = path.join(this.rootDir, 'kiteretsu.config.json');
-    if (!(await fs.pathExists(tsConfigPath)) && !(await fs.pathExists(jsonConfigPath))) {
+    if (!(await fs.pathExists(tsConfigPath))) {
       await createDefaultConfigFile(this.rootDir);
     }
   }
