@@ -12,13 +12,15 @@ interface ExpectedJson {
   notes?: string;
 }
 
-const ROOT_DIR = path.resolve(fileURLToPath(new URL('../../..', import.meta.url)));
-const FIXTURES_DIR = path.join(ROOT_DIR, 'test-fixtures');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const TEST_ROOT = path.join(__dirname, 'temp_test_conformance');
+const SRC_FIXTURES_DIR = path.resolve(__dirname, '../../../test-fixtures');
+const FIXTURES_DIR = path.join(TEST_ROOT, 'test-fixtures');
 
 describe('Fixture Conformance & Multi-Language Graph Resolution', () => {
   let kiteretsu: Kiteretsu;
 
-  // Find all expected.json files
+  // Find all expected.json files from source fixtures
   const expectedFiles: string[] = [];
   function findExpected(dir: string) {
     if (!fs.existsSync(dir)) return;
@@ -32,37 +34,23 @@ describe('Fixture Conformance & Multi-Language Graph Resolution', () => {
       }
     }
   }
-  findExpected(FIXTURES_DIR);
+  findExpected(SRC_FIXTURES_DIR);
 
   beforeAll(async () => {
-    kiteretsu = new Kiteretsu({ rootDir: ROOT_DIR });
+    await fs.remove(TEST_ROOT);
+    await fs.ensureDir(TEST_ROOT);
+    await fs.copy(SRC_FIXTURES_DIR, FIXTURES_DIR);
+
+    kiteretsu = new Kiteretsu({ rootDir: TEST_ROOT });
     await kiteretsu.init();
-
-    // Index all fixture files once upfront
-    const allFixtureFiles: string[] = [];
-    function collectAll(dir: string) {
-      if (!fs.existsSync(dir)) return;
-      const entries = fs.readdirSync(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          collectAll(full);
-        } else if (entry.name !== 'expected.json') {
-          allFixtureFiles.push(full);
-        }
-      }
-    }
-    collectAll(FIXTURES_DIR);
-
-    for (const file of allFixtureFiles) {
-      await kiteretsu.indexFile(file);
-    }
-  }, 30000);
+    await kiteretsu.index();
+  }, 45000);
 
   afterAll(async () => {
     if (kiteretsu) {
       await kiteretsu.destroy();
     }
+    await fs.remove(TEST_ROOT);
   });
 
   const normalize = (p: string) => {
@@ -70,19 +58,20 @@ describe('Fixture Conformance & Multi-Language Graph Resolution', () => {
     if (clean.startsWith('UNRESOLVABLE: ')) {
       clean = clean.slice('UNRESOLVABLE: '.length);
     }
-    const abs = path.isAbsolute(clean) ? clean : path.resolve(ROOT_DIR, clean);
-    let rel = path.relative(ROOT_DIR, abs).replace(/\\/g, '/');
+    const abs = path.isAbsolute(clean) ? clean : path.resolve(TEST_ROOT, clean);
+    let rel = path.relative(TEST_ROOT, abs).replace(/\\/g, '/');
     if (rel.startsWith('./')) rel = rel.slice(2);
     return rel.toLowerCase();
   };
 
-  for (const expectedFile of expectedFiles) {
-    const fixtureDir = path.dirname(expectedFile);
-    const relDir = path.relative(FIXTURES_DIR, fixtureDir).replace(/\\/g, '/');
+  for (const srcExpectedFile of expectedFiles) {
+    const srcFixtureDir = path.dirname(srcExpectedFile);
+    const relDir = path.relative(SRC_FIXTURES_DIR, srcFixtureDir).replace(/\\/g, '/');
 
     it(`evaluates conformance for [${relDir}]`, async () => {
+      const expectedFile = path.join(FIXTURES_DIR, relDir, 'expected.json');
       const expected: ExpectedJson = await fs.readJson(expectedFile);
-      const triggerFull = path.resolve(ROOT_DIR, expected.trigger_file);
+      const triggerFull = path.resolve(TEST_ROOT, expected.trigger_file);
 
       const analyzer = await kiteretsu.getAnalyzer();
       const rawBlast = await analyzer.getBlastRadius(triggerFull);

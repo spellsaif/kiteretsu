@@ -242,9 +242,15 @@ export class Indexer {
         let targetRelative = path.relative(this.rootDir, targetPath).replace(/\\/g, '/');
         if (targetRelative.startsWith('./')) targetRelative = targetRelative.slice(2);
 
-        const target = await knex('files')
+        let target = await knex('files')
           .whereRaw('LOWER(path) = ?', [targetRelative.toLowerCase()])
           .first();
+
+        if (!target && fs.existsSync(targetPath)) {
+          const targetHash = await this.scanner.getFileHash(targetPath);
+          const upserted = await this.graphStore.upsertFile(targetRelative, targetHash);
+          target = { id: upserted.id, path: targetRelative };
+        }
 
         if (target && target.id !== fileId) {
           const edgeKey = `${fileId}:${target.id}:${relation}`;
