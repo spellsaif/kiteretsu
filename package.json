@@ -25,7 +25,8 @@
     "cli": "pnpm --filter kiteretsu start",
     "mcp": "pnpm --filter @kiteretsu/mcp-server start",
     "pack:check": "pnpm build && pnpm --filter @kiteretsu/core exec npm pack --dry-run && pnpm --filter @kiteretsu/agent-bridge exec npm pack --dry-run && pnpm --filter @kiteretsu/mcp-server exec npm pack --dry-run && pnpm --filter kiteretsu exec npm pack --dry-run",
-    "release:check": "pnpm test && pnpm build && pnpm pack:check"
+    "release:check": "pnpm test && pnpm build && pnpm pack:check",
+    "release:publish": "pnpm release:check && pnpm publish -r --access public"
   },
   "keywords": [
     "kiteretsu",

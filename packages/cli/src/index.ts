@@ -5,7 +5,7 @@ import ora from 'ora';
 import cliProgress from 'cli-progress';
 import boxen from 'boxen';
 import gradient from 'gradient-string';
-import { Kiteretsu, loadProjectConfigSync } from '@kiteretsu/core';
+import { Kiteretsu, loadProjectConfigSync, createDefaultConfigFile } from '@kiteretsu/core';
 import { CodeWatcher } from '@kiteretsu/core/watcher.js';
 import {
   AgentDetector,
@@ -46,7 +46,7 @@ function findWorkspaceRoot(startDir: string): string {
   return startDir;
 }
 
-export { defineConfig, loadProjectConfig, loadProjectConfigSync } from '@kiteretsu/core';
+export { defineConfig, loadProjectConfig, loadProjectConfigSync, createDefaultConfigFile } from '@kiteretsu/core';
 
 const rootDir = findWorkspaceRoot(process.cwd());
 const userConfig = loadProjectConfigSync(rootDir);
@@ -126,6 +126,13 @@ program
       console.log(chalk.green(`  ✓ ${i.name} managed instructions`));
     });
     console.log(chalk.green('  ✓ MCP Server configuration'));
+
+    // Option A: Explicitly ensure canonical kiteretsu.config.ts exists
+    const tsConfigPath = path.join(rootDir, 'kiteretsu.config.ts');
+    if (!fs.existsSync(tsConfigPath)) {
+      await createDefaultConfigFile(rootDir);
+      console.log(chalk.green('  ✓ Created canonical kiteretsu.config.ts'));
+    }
 
     const spinner = ora('Initializing repository intelligence database...').start();
     try {
