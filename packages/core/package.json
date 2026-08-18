@@ -1,6 +1,6 @@
 {
   "name": "@spellsaif/kiteretsu-core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Core intelligence engine, AST code graph, and memory layer for Kiteretsu",
   "license": "MIT",
   "author": "spellsaif",
