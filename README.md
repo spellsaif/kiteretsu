@@ -196,7 +196,7 @@ Frustrating debugging loop                      Clean, safe, idiomatic implement
 | **Cursor IDE** | `.cursor/rules/kiteretsu.mdc` | `.cursor/mcp.json` | `kiteretsu init` |
 | **Gemini CLI / Antigravity** | `GEMINI.md` | `.gemini/settings.json` | `kiteretsu init` |
 | **OpenCode** | `AGENTS.md` & `.opencode/agents/` | `opencode.json` (`mcp` key) | `kiteretsu init` |
-| **OpenAI Codex** | `CODEX.md` | Universal MCP | `kiteretsu init` |
+| **OpenAI Codex** | `AGENTS.md` | Universal MCP | `kiteretsu init` |
 | **GitHub Copilot** | `.github/copilot-instructions.md` | Copilot instructions | `kiteretsu init` |
 | **Generic MCP Agent** | `AGENTS.md` | `mcp.json` | `kiteretsu init` |
 
@@ -585,7 +585,7 @@ pnpm install
 # 3. Build all workspace packages
 pnpm build
 
-# 4. Run all 10 test suites (32+ automated tests)
+# 4. Run automated test suites
 pnpm test
 ```
 

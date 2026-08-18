@@ -147,7 +147,7 @@ describe('Agent Bridge & Managed Instruction Sections', () => {
     const copilotContent = await fs.readFile(path.join(TEST_ROOT, '.github', 'copilot-instructions.md'), 'utf8');
     expect(copilotContent).toContain(KITERETSU_SECTION_START);
 
-    const codexContent = await fs.readFile(path.join(TEST_ROOT, 'CODEX.md'), 'utf8');
+    const codexContent = await fs.readFile(path.join(TEST_ROOT, 'AGENTS.md'), 'utf8');
     expect(codexContent).toContain(KITERETSU_SECTION_START);
 
     const copilotStatus = await copilot.validate({ rootDir: TEST_ROOT });

@@ -14,17 +14,18 @@ export class CodexIntegration implements AgentIntegration {
   readonly name = 'OpenAI Codex';
 
   async detect(root: string): Promise<boolean> {
-    const codexMd = path.join(root, 'CODEX.md');
     const codexDir = path.join(root, '.codex');
+    const agentsMd = path.join(root, 'AGENTS.md');
     return (
-      (await fs.pathExists(codexMd)) ||
       (await fs.pathExists(codexDir)) ||
+      (await fs.pathExists(agentsMd)) ||
       !!process.env.CODEX
     );
   }
 
   async install(ctx: IntegrationContext): Promise<void> {
-    const instructionPath = path.join(ctx.rootDir, 'CODEX.md');
+    // OpenAI Codex convention centers on AGENTS.md
+    const instructionPath = path.join(ctx.rootDir, 'AGENTS.md');
 
     let existingContent = '';
     if (await fs.pathExists(instructionPath)) {
@@ -41,7 +42,7 @@ export class CodexIntegration implements AgentIntegration {
   }
 
   async remove(ctx: IntegrationContext): Promise<void> {
-    const instructionPath = path.join(ctx.rootDir, 'CODEX.md');
+    const instructionPath = path.join(ctx.rootDir, 'AGENTS.md');
     if (await fs.pathExists(instructionPath)) {
       const content = await fs.readFile(instructionPath, 'utf8');
       const cleared = injectManagedSection(content, '').replace(/<!-- KITERETSU:START -->\s*<!-- KITERETSU:END -->/g, '').trim();
@@ -55,7 +56,7 @@ export class CodexIntegration implements AgentIntegration {
 
   async validate(ctx: IntegrationContext): Promise<IntegrationStatus> {
     const issues: string[] = [];
-    const instructionPath = path.join(ctx.rootDir, 'CODEX.md');
+    const instructionPath = path.join(ctx.rootDir, 'AGENTS.md');
 
     const detected = await this.detect(ctx.rootDir);
     let installed = false;
@@ -65,7 +66,7 @@ export class CodexIntegration implements AgentIntegration {
       if (extractManagedSection(content)) {
         installed = true;
       } else {
-        issues.push('CODEX.md exists but is missing the managed Kiteretsu section.');
+        issues.push('AGENTS.md exists but is missing the managed Kiteretsu section.');
       }
     }
 
@@ -75,7 +76,7 @@ export class CodexIntegration implements AgentIntegration {
       detected,
       installed,
       healthy: installed && issues.length === 0,
-      instructionFile: 'CODEX.md',
+      instructionFile: 'AGENTS.md',
       issues
     };
   }
