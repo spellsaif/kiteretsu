@@ -13,8 +13,9 @@ const config: Config = {
     v4: true,
   },
 
-  url: 'https://kiteretsu.org',
-  baseUrl: '/',
+  url: 'https://spellsaif.github.io',
+  baseUrl: '/kiteretsu/',
+  trailingSlash: false,
 
   organizationName: 'spellsaif',
   projectName: 'kiteretsu',
