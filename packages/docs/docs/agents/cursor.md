@@ -1,30 +1,63 @@
-# Integrating Cursor
+# Integrating Cursor IDE
 
-Kiteretsu integrates with **Cursor** using its powerful `.mdc` (Cursor Rules) system. This ensures that the Cursor agent is always aware of the Kiteretsu intelligence layer.
+Kiteretsu integrates with **Cursor IDE** using project rules (`.cursor/rules/kiteretsu.mdc`) and Cursor's Model Context Protocol (MCP) support.
 
-## Installation
+---
 
-Run the following command in your project root:
+## Setup
+
+Run in your project root:
 
 ```bash
-kiteretsu install cursor
+npx kiteretsu init --agent cursor
 ```
 
-## What happens?
+---
 
-Kiteretsu creates a new file at `.cursor/rules/kiteretsu.mdc`. This file is configured with `alwaysApply: true`, meaning the Cursor agent will take these rules into account for every single message.
+## What Kiteretsu Configures
 
-### The Rule Content
-The generated rule includes the **Kiteretsu Protocol**, mandating that the agent use `kiteretsu context` before answering architectural questions.
+### 1. Cursor Rule (`.cursor/rules/kiteretsu.mdc`)
+Kiteretsu creates `.cursor/rules/kiteretsu.mdc` with `alwaysApply: true`:
+
+```markdown
+---
+description: Kiteretsu Codebase Intelligence & Memory Layer Protocol
+globs: *
+alwaysApply: true
+---
+
+# Kiteretsu Intelligence Bridge (Cursor IDE)
+
+This repository uses Kiteretsu to maintain a continuous Code Intelligence Graph and Memory Layer.
+
+## 🧭 Behavioral Protocol
+1. **Context First**: Before planning or making changes, query Kiteretsu for relevant context:
+   - Use MCP tool `kiteretsu_context` (or CLI `kiteretsu context "<task>"`)
+2. **Check Blast Radius**: Before high-impact refactors, inspect callers & callees with `kiteretsu_blast_radius`.
+3. **Verify**: Run related tests suggested by `kiteretsu_tests` or `kiteretsu context`.
+4. **Record Outcome**: Record completed tasks with `kiteretsu_record_task`.
+```
+
+### 2. Cursor MCP Configuration (`.cursor/mcp.json`)
+Kiteretsu configures the MCP server in `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "kiteretsu": {
+      "command": "npx",
+      "args": ["-y", "@kiteretsu/mcp-server"]
+    }
+  }
+}
+```
+
+---
 
 ## Workflow with Cursor
 
-When you use **Cursor Chat** or **Cursor Composer**:
+When you interact with **Cursor Agent**, **Cursor Chat**, or **Cursor Composer**:
 
-1.  **Cursor reads the rules**: It sees that Kiteretsu is the "Primary Source of Truth."
-2.  **Cursor calls the CLI**: When you ask a complex question, Cursor will use its terminal capability to run `kiteretsu context`.
-3.  **Accurate Proposals**: Because Cursor has the curated context pack, its code completions and refactoring proposals will be significantly more accurate and aware of dependencies.
-
-## Using MCP with Cursor
-
-If you want an even tighter integration, you can also add Kiteretsu as an **MCP Server** in Cursor's settings. See the [MCP Guide](../mcp-server) for more details.
+1. **Rule Awareness**: The rule instructs Cursor to query Kiteretsu for repository architecture, symbol relationships, and blast radius.
+2. **Direct MCP Access**: Cursor invokes `kiteretsu_context` or `kiteretsu_blast_radius` via MCP to inspect relevant files before modifying code.
+3. **Precision Edits**: Cursor avoids hallucinating import paths or missing transitive callers across the codebase.

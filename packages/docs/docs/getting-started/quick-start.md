@@ -4,50 +4,44 @@ sidebar_position: 2
 
 # Quick Start
 
-Follow this 3-step guide to get Kiteretsu intelligence running in your project.
+Follow this guide to get Kiteretsu intelligence running with your coding agents in seconds.
 
 ---
 
-### 1. Install the CLI
-Install the Kiteretsu engine globally using your preferred package manager.
+### 1. One-Command Initialization
+Run in your project root:
 
 ```bash
-npm install -g @kiteretsu/cli
+npx kiteretsu init
 ```
 
-### 2. Initialize & Index
-Go to your project root and build the initial codebase memory.
-
-```bash
-# Initialize the project
-kiteretsu init
-
-# Build the codebase intelligence map
-kiteretsu index
-```
-
-### 3. Connect your AI Agent
-Kiteretsu is designed to work with the tools you already use. **Choose your agent below** to see the specific integration guide:
-
-#### 🚀 Popular IDE Agents
-- [**Claude Code**](../agents/claude)
-- [**Cursor**](../agents/cursor)
-- [**Windsurf / Cascade**](../agents/windsurf)
-- [**Trae**](../agents/trae)
-- [**VS Code Copilot**](../agents/vscode)
-
-#### 🤖 CLI & Autonomous Agents
-- [**Antigravity**](../agents/antigravity)
-- [**Aider**](../agents/aider)
-- [**Codex**](../agents/codex)
-- [**Google Gemini**](../agents/gemini)
-
-#### ⚙️ Advanced Integrations
-- [**Model Context Protocol (MCP)**](../mcp-server)
-- [**Git Self-Healing**](../agents/git)
-- [**All 15+ Supported Agents**](../agents/overview)
+This will:
+- Detect your repository languages and existing agent configurations.
+- Create `kiteretsu.config.ts` if missing.
+- Inject non-destructive instructions into `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`, etc.
+- Register `@kiteretsu/mcp-server` MCP endpoints.
+- Build the initial code graph index.
 
 ---
 
-## Next Steps
-Once your agent is connected, try asking it a question about your project's architecture! Kiteretsu will automatically provide the context it needs.
+### 2. Supported Agent Guides
+
+Explore the setup guides for your specific agent:
+
+- [**Claude Code**](../agents/claude) (`CLAUDE.md` + `.claude.json`)
+- [**Cursor IDE**](../agents/cursor) (`.cursor/rules/kiteretsu.mdc` + `.cursor/mcp.json`)
+- [**Gemini CLI**](../agents/gemini) (`GEMINI.md` + `.gemini/settings.json`)
+- [**OpenCode**](../agents/opencode) (`AGENTS.md` + `opencode.json`)
+- [**OpenAI Codex**](../agents/codex) (`AGENTS.md` protocol)
+- [**GitHub Copilot**](../agents/copilot) (`.github/copilot-instructions.md`)
+- [**Generic MCP Agent**](../agents/generic) (`mcp.json` + `AGENTS.md`)
+- [**Model Context Protocol (MCP) Server**](../mcp-server)
+
+---
+
+### 3. Verify Health
+Run a diagnostic health check across the local index, graph, and agent bridges:
+
+```bash
+npx kiteretsu doctor
+```

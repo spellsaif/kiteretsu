@@ -1,43 +1,57 @@
-# Integrating Google Gemini CLI
+# Integrating Gemini CLI
 
-Kiteretsu provides a specialized "Skill" and "Interception Hook" for the **Google Gemini CLI**.
+Kiteretsu integrates with **Google Gemini CLI** and Gemini-based coding tools through `GEMINI.md` project instructions and MCP server configuration in `.gemini/settings.json`.
 
-## Installation
+---
 
-Run the following command in your project root:
+## Setup
+
+Run in your project root:
 
 ```bash
-kiteretsu install gemini
+npx kiteretsu init --agent gemini
 ```
 
-## What happens?
+---
 
-Kiteretsu performs three major actions:
+## What Kiteretsu Configures
 
-### 1. Skill Installation
-Creates a **SKILL.md** file in `.gemini/skills/kiteretsu/`. This adds the Kiteretsu intelligence protocol as a native capability to the Gemini agent.
+### 1. `GEMINI.md` Managed Section
+Kiteretsu injects a managed instruction block into `GEMINI.md`:
 
-### 2. GEMINI.md Update
-Appends the **Kiteretsu Intelligence Layer** protocol to your `GEMINI.md` file (if it exists) to provide high-level governance.
+```markdown
+<!-- KITERETSU:START -->
+# Kiteretsu Intelligence Bridge (Gemini CLI / GEMINI.md)
 
-### 3. Tool Hook (BeforeTool)
-Kiteretsu updates `.gemini/settings.json` to include a **BeforeTool** hook for the `file-read` tool:
+This repository uses Kiteretsu to maintain a continuous Code Intelligence Graph and Memory Layer.
+
+## 🧭 Behavioral Protocol
+1. **Context First**: Before planning or making changes, query Kiteretsu for relevant context:
+   - Use MCP tool `kiteretsu_context` (or CLI `kiteretsu context "<task>"`)
+2. **Check Blast Radius**: Before high-impact refactors, inspect callers & callees with `kiteretsu_blast_radius`.
+3. **Verify**: Run related tests suggested by `kiteretsu_tests` or `kiteretsu context`.
+4. **Record Outcome**: Record completed tasks with `kiteretsu_record_task`.
+<!-- KITERETSU:END -->
+```
+
+### 2. `.gemini/settings.json` MCP Server Configuration
+Kiteretsu configures the MCP server under `mcpServers`:
 
 ```json
 {
-  "hooks": {
-    "BeforeTool": {
-      "file-read": "Read Kiteretsu context before reading raw files."
+  "mcpServers": {
+    "kiteretsu": {
+      "command": "npx",
+      "args": ["-y", "@kiteretsu/mcp-server"]
     }
   }
 }
 ```
 
-## Workflow with Gemini
+---
 
-Gemini is extremely fast at reading files, which often leads to it reading *too many* files. Kiteretsu fixes this:
+## Workflow with Gemini CLI
 
-1.  **Thinking**: Gemini identifies it needs to read some code.
-2.  **Intercept**: The `BeforeTool` hook triggers. Gemini is reminded to check Kiteretsu.
-3.  **Optimize**: Gemini runs `kiteretsu context` and realizes it only needs to read 3 files instead of 30.
-4.  **Result**: Much faster response times and significantly lower token usage.
+1. **Context Retrieval**: Gemini queries `kiteretsu_context` before generating code for architectural or multi-file tasks.
+2. **Token Efficiency**: Instead of recursively exploring directories, Gemini focuses on the ranked candidate files provided in the context pack.
+3. **Task Persistence**: Gemini logs task outcomes to Kiteretsu's episodic memory store via `kiteretsu_record_task`.

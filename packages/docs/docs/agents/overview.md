@@ -1,44 +1,67 @@
-# Agent Integrations Directory
+# Agent Integrations
 
-Kiteretsu is designed to be **agent-agnostic**. It provides a standardized intelligence layer for **15+ different AI agents and IDEs**.
-
-## Integration Methods
-
-Kiteretsu uses three primary methods to integrate with agents:
-
-1.  **Markdown Protocols**: Injecting instructions into `AGENTS.md`, `CLAUDE.md`, etc.
-2.  **Tool Interception**: Using hooks (PreToolUse) to steer agent behavior.
-3.  **Native Tools**: Using the **MCP Server** for direct communication.
+Kiteretsu is designed to be **agent-agnostic**. It provides continuous code intelligence, blast radius calculation, and memory for any AI coding agent via standardized instructions and the **Model Context Protocol (MCP)**.
 
 ---
 
-## Supported Agents & IDEs
+## Supported Agents (0.1.0)
 
-| Agent / IDE | Integration Type | Command |
-| :--- | :--- | :--- |
-| **Antigravity** | Protocol + Workflows | `kiteretsu install antigravity` |
-| **Claude Code** | Protocol + Hooks | `kiteretsu install claude` |
-| **Cursor** | Rules (.mdc) + MCP | `kiteretsu install cursor` |
-| **Windsurf / Cascade** | Rules (.windsurfrules) | `kiteretsu install windsurf` |
-| **Trae / Trae-CN** | AGENTS.md Protocol | `kiteretsu install trae` |
-| **Aider** | AGENTS.md Protocol | `kiteretsu install aider` |
-| **VS Code Copilot** | .github/copilot-instructions.md | `kiteretsu install vscode` |
-| **GitHub Copilot CLI** | Global Skill (SKILL.md) | `kiteretsu install copilot` |
-| **Google Gemini CLI** | Skill + BeforeTool Hook | `kiteretsu install gemini` |
-| **Kiro IDE** | Persistent Steering Rules | `kiteretsu install kiro` |
-| **Codex** | AGENTS.md + Hooks | `kiteretsu install codex` |
-| **OpenCode** | Plugin-based Interception | `kiteretsu install opencode` |
-| **OpenClaw / Claw** | AGENTS.md Protocol | `kiteretsu install claw` |
-| **Droid / Factory-Droid** | AGENTS.md Protocol | `kiteretsu install droid` |
-| **Hermes** | AGENTS.md Protocol | `kiteretsu install hermes` |
-| **Git (Self-Healing)** | post-commit Hook | `kiteretsu install git` |
+| Agent | Native Instructions | MCP Integration | Onboarding Command |
+| :--- | :--- | :--- | :--- |
+| **Claude Code** | `CLAUDE.md` (Managed Section) | `.claude.json` | `npx kiteretsu init --agent claude` |
+| **Cursor IDE** | `.cursor/rules/kiteretsu.mdc` | `.cursor/mcp.json` | `npx kiteretsu init --agent cursor` |
+| **Gemini CLI** | `GEMINI.md` | `.gemini/settings.json` | `npx kiteretsu init --agent gemini` |
+| **OpenCode** | `AGENTS.md` & `.opencode/agents/` | `opencode.json` (`mcp.servers`) | `npx kiteretsu init --agent opencode` |
+| **OpenAI Codex** | `AGENTS.md` (Managed Section) | Universal MCP | `npx kiteretsu init --agent codex` |
+| **GitHub Copilot** | `.github/copilot-instructions.md` | Copilot instructions | `npx kiteretsu init --agent copilot` |
+| **Generic MCP Agent** | `AGENTS.md` | `mcp.json` | `npx kiteretsu init --agent generic` |
 
 ---
 
-## Quick Setup
-To install Kiteretsu for any of these agents, simply run:
+## How It Works
+
+Kiteretsu connects to agents using two non-destructive mechanisms:
+
+1. **Managed Instruction Sections**:
+   Kiteretsu injects behavioral rules into project instruction files using bounded tags:
+   ```markdown
+   <!-- KITERETSU:START -->
+   # Kiteretsu Intelligence Bridge
+   ...
+   <!-- KITERETSU:END -->
+   ```
+   Your custom instructions outside these tags are **never overwritten**.
+
+2. **Model Context Protocol (MCP)**:
+   Agents connect to Kiteretsu's local Stdio MCP server (`@kiteretsu/mcp-server`) to query symbols, dependencies, blast radius, ADRs, and context packs in real time.
+
+---
+
+## Configuration Commands
+
 ```bash
-kiteretsu install <agent_name>
+# Automatic detection (configures detected agents)
+npx kiteretsu init
+
+# Configure a specific agent
+npx kiteretsu init --agent claude
+npx kiteretsu init --agent cursor
+npx kiteretsu init --agent gemini
+
+# Configure all supported agents
+npx kiteretsu init --all
+
+# Update managed sections when upgrading
+npx kiteretsu sync
 ```
 
-For detailed guides on the most popular integrations, check the sidebar!
+---
+
+## Planned Future Integrations
+
+The following adapters are planned for subsequent releases:
+- **Aider** (CLI memory bridge)
+- **Windsurf / Cascade** (`.windsurfrules` adapter)
+- **Trae / Trae-CN**
+- **Google Antigravity**
+- **VS Code Extension**

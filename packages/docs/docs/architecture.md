@@ -4,95 +4,92 @@ sidebar_position: 1
 
 # Architecture Deep Dive
 
-Kiteretsu is designed as a **High-Performance Hybrid Intelligence Pipeline**. Instead of treating your codebase as a flat collection of files, it treats it as a **Living Knowledge Graph**.
+Kiteretsu is structured as an **Incremental Code Intelligence Engine & Agent Memory Layer**. Instead of treating a repository as flat text, it maintains a continuous **Semantic and Dependency Graph**.
 
 ---
 
-## 🛰️ The Intelligence Pipeline
+## 🛰️ System Architecture
 
 ```mermaid
 graph TD
-    A[Disk: Source Code] --> B{Scanner: 4-Layer Sieve}
-    B -- Ignored --> C[Skip: .gitignore / kiteretsu.config.ts ignore]
-    B -- Accepted --> D{Parser: Hybrid Engine}
+    Agent["AI Coding Agent (Claude, Cursor, OpenCode, Codex, Copilot)"]
+    Bridge["Agent Bridge / MCP Server / CLI"]
+    Compiler["Context Compiler (Four-Signal Fusion)"]
     
-    D -- < 500KB --> E[Deep AST: Tree-sitter]
-    D -- 500KB - 10MB --> F[Lite: Fast Regex]
-    D -- > 10MB --> G[Guardrail: Registration Only]
-    
-    E & F --> H[(SQLite: Knowledge Graph)]
-    E & F --> I[Vector DB: Embeddings]
-    
-    J[User Query] --> K[Context Engine]
-    H & I & L[Governance Rules] --> K
-    K --> M[Output: Sniper Context Pack]
+    subgraph Sensors ["Four-Signal Multi-Sensor Retrieval"]
+        S1["1. Lexical Sensor (IDF-Weighted Token Matching)"]
+        S2["2. Semantic Sensor (Local Vector Similarity)"]
+        S3["3. Graph Sensor (Multi-Hop Symbol & File Traversal)"]
+        S4["4. Memory Sensor (ADRs & Episodic Task Outcomes)"]
+    end
+
+    Store[("Intelligence Store (SQLite WAL + Vector Cache)")]
+    Indexer["Incremental 4-Pass Indexer"]
+    Repo["Repository Source Code & AST"]
+
+    Agent <--> Bridge
+    Bridge <--> Compiler
+    Compiler <--> Sensors
+    Sensors <--> Store
+    Store <--> Indexer
+    Indexer <--> Repo
 ```
 
 ---
 
-## 💥 Transitive Blast Radius (The Ripple Effect)
+## 💥 Transitive Blast Radius (Downstream Ripple Effects)
 
-Unlike standard search tools that only show direct imports, Kiteretsu calculates the **Transitive Impact**.
+Unlike basic search tools that only show immediate imports, Kiteretsu computes the full **Transitive Blast Radius**:
 
 ```mermaid
 graph LR
-    A[parser.ts] -- "Imported by" --> B[index.ts]
-    B -- "Imported by" --> C[watcher.ts]
-    B -- "Imported by" --> D[cli/index.ts]
-    B -- "Imported by" --> E[mcp-server/index.ts]
+    A["auth/token.ts"] -- "calls" --> B["auth/session.ts"]
+    B -- "calls" --> C["routes/auth.ts"]
+    C -- "calls" --> D["server.ts"]
     
-    style A fill:#f96,stroke:#333,stroke-width:4px
+    style A fill:#f96,stroke:#333,stroke-width:2px
     style B fill:#ff9,stroke:#333
     style C fill:#dfd,stroke:#333
     style D fill:#dfd,stroke:#333
-    style E fill:#dfd,stroke:#333
     
-    subgraph Blast Radius
+    subgraph Blast Radius & Caller Impact
     B
     C
     D
-    E
     end
 ```
-*In this example, changing **parser.ts** affects the entire chain, even though **watcher.ts** never imports it directly.*
+
+When an agent plans a modification to `auth/token.ts`, Kiteretsu surfaces:
+- **Upstream Callers**: Direct and indirect consumers (`routes/auth.ts`, `server.ts`).
+- **Affected Tests**: Conformance tests that exercise the modified symbols.
+- **Risk Rating**: Computed `LOW`, `MEDIUM`, or `HIGH` based on centrality and fan-out.
 
 ---
 
 ## 🏗️ The 4-Stage Intelligence Pipeline
 
-Kiteretsu processes your code through four distinct layers to ensure your AI agents get the perfect balance of speed and precision.
+### 1. The Scanner (Sieve & Filtering)
+The scanner is the first line of defense against noise and context bloat:
+- **Multi-Layer Sieve**: Filters noise through global ignore lists (`node_modules`, `.git`), `kiteretsu.config.ts` `ignore` patterns, machine-generated files (lockfiles), and size thresholds.
+- **Size Guardrails**: Files > 10MB are skipped from deep token indexing to preserve memory.
 
-### 1. The Scanner (The Filter)
-The scanner is the first line of defense against "Context Bloat." 
-- **4-Layer Sieve**: It filters noise through the Global Blacklist, your `kiteretsu.config.ts` `ignore` patterns, machine-generated "garbage" (lockfiles), and physical size guardrails.
-- **Size Awareness**: Files > 10MB are automatically skipped to protect system memory.
-- **Standardized Governance**: All exclusions are managed directly via `kiteretsu.config.ts`, ensuring your index is clean from the start.
+### 2. The Parser (AST & Symbol Extraction)
+- **Deep AST (Tree-sitter)**: Extracts functions, classes, interfaces, methods, calls, extends, and imports.
+- **Lightweight Path**: Large files use a lightweight parsing path that prioritizes structural information while avoiding excessive heap allocations.
 
-### 2. The Parser (The Hybrid Engine)
-This is where the "translation" happens. Kiteretsu uses a **Hybrid Parsing Strategy**:
-- **Deep AST (Tree-sitter)**: For files < 500KB, we use full Tree-sitter grammars to understand every class, function, and variable.
-- **Lite Regex (High Speed)**: For files between 500KB and 10MB, we switch to a specialized Regex engine. This ensures we still capture **imports and exports** (for the Blast Radius) without the massive memory overhead of AST parsing.
+### 3. The Graph & Memory Store (Persistent SQLite)
+All symbols, file relations, architectural rules, decisions (ADRs), and episodic tasks are persisted in a high-performance local SQLite database (`.kiteretsu/memory/kiteretsu.sqlite`) using Write-Ahead Logging (WAL) mode for fast, concurrent reads.
 
-### 3. The Knowledge Graph (The Memory)
-All extracted data is stored in a local, sub-second SQLite database.
-- **Transitive Mapping**: The graph doesn't just know who *you* import; it knows who imports *them*. This enables the **Transitive Blast Radius**.
-- **Vector Embeddings**: Files are summarized and converted into high-dimensional vectors for semantic search.
-
-### 4. The Context Engine (The Query)
-When you run `kiteretsu context`, the engine performs a **Multi-Weighted Search**:
-- **Semantic Similarity**: Finding conceptual matches using ONNX-powered embeddings.
-- **Structural Significance**: Scoring files based on their position in the dependency graph.
-- **Rule Injection**: Merging project-specific architectural rules into the final report.
+### 4. The Context Compiler (Fusion & Budgeting)
+When a task query is received (via CLI `kiteretsu context` or MCP `kiteretsu_context`):
+1. Runs Lexical, Semantic, Graph, and Memory retrieval in parallel.
+2. Applies Reciprocal Rank Fusion (RRF) with IDF weighting.
+3. Formats an explainable Context Pack bounded by the agent's token budget.
 
 ---
 
-## 🛡️ Stability & Safety
-Kiteretsu is built to be **Crash-Proof** on Windows and in large Monorepos:
-- **Zero-Manual Disposal**: We leverage V8's native garbage collection to avoid the "Zone" memory crashes common in WASM-heavy tools.
-- **Atomic Polling**: The watcher uses a stable polling interval to avoid the file-locking issues (EBUSY) that plague traditional watchers on Windows.
-- **Native finalization**: The CLI uses a graceful 300ms termination window to ensure all background AI threads finish cleanly.
+## 🛡️ Stability & Resource Safety
 
----
-
-## 💠 Why This Matters
-By dissecting your project this way, Kiteretsu ensures that your AI Agent (Claude, Cursor, etc.) isn't just "guessing" where things are—it has access to the same architectural map that you do, but at the speed of light.
+- **Graceful Lifecycle Management**: Async finalization ensures worker threads and SQLite WAL locks release cleanly.
+- **Incremental Indexing**: Four-pass reconciliation (Deleted Files -> Modified Diffs -> AST Parsing -> Embeddings) avoids re-indexing unchanged files.
+- **Local Isolation**: All embeddings, graph indices, and episodic records remain strictly on your local machine.

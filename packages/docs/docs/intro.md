@@ -4,39 +4,54 @@ sidebar_position: 0
 
 # What is Kiteretsu?
 
-**Kiteretsu** is a high-performance **Local Intelligence Engine** designed to solve the "last mile" problem of AI-assisted engineering: **Context Blindness.**
+**Kiteretsu** (キテレツ) is a continuous **Codebase Intelligence Graph, Context Compiler & Agent Memory Layer** designed to solve the fundamental limitation of modern AI coding assistants: **Context Blindness.**
 
-While AI agents (like Claude Code, Cursor, and Aider) are incredibly powerful, they are "outsiders" to your codebase. They don't know your hidden dependencies, your architectural rules, or the potential "Blast Radius" of a single change.
-
-Kiteretsu bridges this gap by providing a **Deterministic, Hybrid Map** of your project's soul.
+Named after the classic Japanese anime *Kiteretsu Daihyakka* (キテレツ大百科 — "Kiteretsu Encyclopedia"), where a young inventor brings visionary inventions to life using his ancestor's handwritten encyclopedia of mechanisms and blueprints, Kiteretsu serves as that **living encyclopedia** for AI coding agents.
 
 ---
 
-## 🏗️ The Hybrid Intelligence Philosophy
+## 🏗️ The Four-Signal Fusion Architecture
 
-Kiteretsu doesn't just "index" files; it understands them through a multi-layered approach:
+AI coding agents excel at reading individual files, but struggle to retain repository architecture, unwritten conventions, or transitive downstream blast radius across large codebases.
 
-### 🎯 Sniper Context
-Instead of feeding an AI agent 50 files and wasting your tokens, Kiteretsu uses a **3-Way Discovery Pipeline** (Semantic Vector Search + Weighted Keyword Scoring + Graph Analysis) to identify the **exact 5 files** that matter for your task. 
+Kiteretsu bridges this gap by unifying four complementary retrieval signals:
 
-### 💥 Transitive Blast Radius
-Kiteretsu calculates the **Ripple Effect**. It knows that if you change the `Auth` module, the `Dashboard` might break—even if they aren't directly connected. It traverses your project's dependency graph to ensure you see the full architectural impact of every change.
+### 1. 🔤 Lexical Precision
+BM25-inspired inverse document frequency (IDF) weighted token matching with camelCase/snake_case sub-tokenization.
 
-### 🛡️ Guardrail Governance
-Kiteretsu enforces your project's "Laws." By recording architectural rules, you ensure your AI agent follows your specific design patterns (e.g., "Always use the Repository pattern for DB access").
+### 2. 🧠 Semantic Meaning
+Deterministic vector embeddings (local cosine similarity) that capture high-level conceptual intent.
 
----
+### 3. 🕸️ Graph Intelligence
+Multi-hop dependency traversal (symbol calls, type implementations, class inheritance, and test coverage).
 
-## ⚡ Key Features
-
-- **Hybrid AST/Regex Engine**: High-fidelity parsing for source code, lightning-fast discovery for large assets.
-- **Zero-Noise Scanner**: Multi-layer filtering via `kiteretsu.config.ts` `ignore` rules and built-in filtering for lockfiles and build artifacts.
-- **Atomic Watcher**: A stable, battery-optimized watcher built to handle the complexities of Windows and massive Monorepos.
-- **Local-First Privacy**: Your codebase never leaves your machine. All embeddings and indexing happen locally.
+### 4. 📜 Episodic Memory & ADRs
+Historical task outcomes, engineering notes, and path-scoped Architectural Decision Records (ADRs).
 
 ---
 
-## Ready to empower your agents?
+## 🎯 Explainable Context Compiler
+
+Instead of flooding agent context windows with entire directories, Kiteretsu's Context Compiler synthesizes these four sensors into a compact, budget-aware **Context Pack**:
+
+- **Ranked Candidate Files**: Scored with transparent, explainable signal traces (`lexical`, `semantic`, `graph`, `memory`).
+- **Target Symbols**: Extracted functions, classes, interfaces, and methods.
+- **Architectural Rules**: Scoped governance rules (`global`, path-specific, or language-specific).
+- **Blast Radius & Tests**: Recommended tests and downstream impacted callers.
+
+---
+
+## ⚡ Key Capabilities
+
+- **Universal AST & Dependency Resolution**: High-fidelity Tree-sitter parsing with language capability tiers.
+- **Transitive Blast Radius**: Evaluates downstream ripple effects with risk ratings (`LOW`, `MEDIUM`, `HIGH`) before code is changed.
+- **Deep Code Explanation (`kiteretsu explain`)**: Combines AST source, dependency graph, ADRs, rules, and tests to explain *why* code was designed the way it is.
+- **Zero-Friction Agent Bridge**: One-command non-destructive onboarding for Claude Code, Cursor IDE, Gemini CLI, OpenCode, OpenAI Codex, GitHub Copilot, and Generic MCP agents.
+- **Local-First & Private**: Everything runs locally via embedded SQLite and local vector processing. No source code leaves your workstation.
+
+---
+
+## Ready to get started?
 
 [**Explore the Architecture →**](./architecture)  
-[**Get Started with Installation →**](./getting-started/installation)
+[**Quick Start & Installation →**](./getting-started/installation)

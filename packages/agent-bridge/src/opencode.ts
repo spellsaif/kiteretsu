@@ -49,13 +49,16 @@ export class OpenCodeIntegration implements AgentIntegration {
     if (!opencodeConfig.mcp) {
       opencodeConfig.mcp = {};
     }
+    if (!opencodeConfig.mcp.servers) {
+      opencodeConfig.mcp.servers = {};
+    }
 
     const commandList = [
       ctx.mcpCommand || 'npx',
       ...(ctx.mcpArgs || ['-y', '@kiteretsu/mcp-server'])
     ];
 
-    opencodeConfig.mcp.kiteretsu = {
+    opencodeConfig.mcp.servers.kiteretsu = {
       type: 'local',
       command: commandList,
       ...(ctx.mcpEnv && Object.keys(ctx.mcpEnv).length > 0 ? { environment: ctx.mcpEnv } : {})
@@ -87,8 +90,11 @@ export class OpenCodeIntegration implements AgentIntegration {
     if (await fs.pathExists(opencodeJsonPath)) {
       try {
         const config = await fs.readJson(opencodeJsonPath);
-        if (config.mcp?.kiteretsu) {
-          delete config.mcp.kiteretsu;
+        if (config.mcp?.servers?.kiteretsu) {
+          delete config.mcp.servers.kiteretsu;
+          if (Object.keys(config.mcp.servers).length === 0) {
+            delete config.mcp.servers;
+          }
           if (Object.keys(config.mcp).length === 0) {
             delete config.mcp;
           }
@@ -141,10 +147,10 @@ export class OpenCodeIntegration implements AgentIntegration {
     if (await fs.pathExists(opencodeJsonPath)) {
       try {
         const config = await fs.readJson(opencodeJsonPath);
-        if (config.mcp?.kiteretsu) {
+        if (config.mcp?.servers?.kiteretsu || config.mcp?.kiteretsu) {
           healthy = installed && issues.length === 0;
         } else {
-          issues.push('opencode.json is missing mcp.kiteretsu configuration.');
+          issues.push('opencode.json is missing mcp.servers.kiteretsu configuration.');
         }
       } catch {
         issues.push('opencode.json is invalid JSON.');

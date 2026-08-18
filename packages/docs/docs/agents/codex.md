@@ -1,39 +1,43 @@
-# Integrating Codex
+# Integrating OpenAI Codex
 
-Kiteretsu provides a dual-layer integration for **Codex**, including instruction injection and automated tool hooks.
+Kiteretsu integrates with **OpenAI Codex** through project-level instructions in `AGENTS.md` and standard MCP server configuration.
 
-## Installation
+---
 
-Run the following command in your project root:
+## Setup
+
+Run in your project root:
 
 ```bash
-kiteretsu install codex
+npx kiteretsu init --agent codex
 ```
 
-## How it Works
+---
 
-Kiteretsu performs two major actions:
+## What Kiteretsu Configures
 
-### 1. AGENTS.md Update
-Appends the **Kiteretsu Intelligence Layer** protocol to your `AGENTS.md` file.
+### `AGENTS.md` Managed Section
+OpenAI's Codex conventions center on `AGENTS.md` for steering repository tasks. Kiteretsu maintains a managed instruction section:
 
-### 2. Tool Hook (Interception)
-Kiteretsu creates or updates **`.codex/hooks.json`** to include a **PreToolUse** hook for the Bash tool:
+```markdown
+<!-- KITERETSU:START -->
+# Kiteretsu Intelligence Bridge (OpenAI Codex / AGENTS.md)
 
-```json
-{
-  "PreToolUse": {
-    "Bash": "Read Kiteretsu context pack before executing bash commands to search."
-  }
-}
+This repository uses Kiteretsu to maintain a continuous Code Intelligence Graph and Memory Layer.
+
+## 🧭 Behavioral Protocol
+1. **Context First**: Before planning or making changes, query Kiteretsu for relevant context:
+   - Use MCP tool `kiteretsu_context` (or CLI `kiteretsu context "<task>"`)
+2. **Check Blast Radius**: Before high-impact refactors, inspect callers & callees with `kiteretsu_blast_radius`.
+3. **Verify**: Run related tests suggested by `kiteretsu_tests` or `kiteretsu context`.
+4. **Record Outcome**: Record completed tasks with `kiteretsu_record_task`.
+<!-- KITERETSU:END -->
 ```
+
+---
 
 ## Workflow with Codex
 
-1.  **Thinking**: Codex decides it needs to run a search (e.g., `grep`).
-2.  **Intercept**: The PreToolUse hook triggers.
-3.  **Remind**: Codex is reminded to check the Kiteretsu Context Pack first.
-4.  **Optimized Execution**: Codex runs `kiteretsu context`, gets the specific file list, and avoids doing broad, expensive terminal searches.
-
-## Why this matters
-Codex is powerful but can be "aggressive" with terminal commands. This integration steers that power toward precision context gathering, saving you tokens and time.
+1. **Protocol Adherence**: Codex reads `AGENTS.md` on startup and obeys the architectural protocol.
+2. **Targeted Exploration**: When formulating implementation plans, Codex queries `kiteretsu context "<task>"` to obtain the exact symbols, rules, and blast radius.
+3. **Outcome Persistence**: Codex records task success or notes to enrich repository memory.

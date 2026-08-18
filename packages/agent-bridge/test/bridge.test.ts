@@ -123,11 +123,11 @@ describe('Agent Bridge & Managed Instruction Sections', () => {
     const agentsMd = await fs.readFile(path.join(TEST_ROOT, 'AGENTS.md'), 'utf8');
     expect(agentsMd).toContain(KITERETSU_SECTION_START);
 
-    // Verify opencode.json created with mcp.kiteretsu
+    // Verify opencode.json created with mcp.servers.kiteretsu
     const opencodeJson = await fs.readJson(path.join(TEST_ROOT, 'opencode.json'));
-    expect(opencodeJson.mcp.kiteretsu).toBeDefined();
-    expect(opencodeJson.mcp.kiteretsu.type).toBe('local');
-    expect(opencodeJson.mcp.kiteretsu.command).toEqual(['npx', '-y', '@kiteretsu/mcp-server']);
+    expect(opencodeJson.mcp.servers.kiteretsu).toBeDefined();
+    expect(opencodeJson.mcp.servers.kiteretsu.type).toBe('local');
+    expect(opencodeJson.mcp.servers.kiteretsu.command).toEqual(['npx', '-y', '@kiteretsu/mcp-server']);
 
     const status = await opencode.validate({ rootDir: TEST_ROOT });
     expect(status.installed).toBe(true);

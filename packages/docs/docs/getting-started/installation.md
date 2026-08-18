@@ -1,44 +1,87 @@
-# Installation
+# Installation & Quick Start
 
-Get up and running with Kiteretsu in seconds.
+Get up and running with Kiteretsu in your repository.
 
-## Prerequisites
+---
 
-- **Node.js**: v18.0 or higher.
-- **Package Manager**: pnpm (recommended), npm, or yarn.
+## Requirements
 
-## Install the CLI
+- **Node.js**: `v20.0.0` or higher
+- **OS**: Linux, macOS, or Windows
 
-The Kiteretsu CLI is the primary way to interact with the engine. Install it globally or use it via `npx`.
+---
 
-```bash
-# Install globally
-npm install -g @kiteretsu/cli
+## Quick Start (Recommended)
 
-# Or use with npx
-npx @kiteretsu/cli --help
-```
-
-## Initializing a Project
-
-Once installed, navigate to your project root and run the initialization command:
+Run directly inside your project root with `npx`:
 
 ```bash
-kiteretsu init
+npx kiteretsu init
 ```
 
-This will:
-1. Detect repository ecosystem and available AI agents.
-2. Generate canonical **`kiteretsu.config.ts`** in your project root.
-3. Configure agent instructions (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`) and MCP servers.
-4. Initialize the `.kiteretsu/` runtime storage directory.
+### What Happens During `init`:
+1. **Detects Environment**: Discovers project languages and existing AI coding agent configurations.
+2. **Configures Agents**: Non-destructively updates agent instruction files (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`, etc.).
+3. **Configures MCP**: Registers `@kiteretsu/mcp-server` with detected agent tools.
+4. **Creates Configuration**: Generates canonical `kiteretsu.config.ts` if missing.
+5. **Initializes & Indexes**: Creates `.kiteretsu/` local SQLite database and indexes symbols and dependencies.
 
-## Your First Index
+---
 
-After initialization, run a full index to build the initial codebase map:
+## Global CLI Installation (Optional)
+
+You can also install Kiteretsu globally:
 
 ```bash
-kiteretsu index
+npm install -g kiteretsu
+# or
+pnpm add -g kiteretsu
 ```
 
-> **Tip**: For large projects, the first index may take a few seconds. Subsequent updates are incremental and nearly instantaneous.
+Then run commands directly:
+
+```bash
+kiteretsu --help
+```
+
+---
+
+## Targeting Specific Agents
+
+```bash
+# Configure for Claude Code only
+npx kiteretsu init --agent claude
+
+# Configure for Cursor IDE only
+npx kiteretsu init --agent cursor
+
+# Configure for Gemini CLI only
+npx kiteretsu init --agent gemini
+
+# Configure for OpenCode only
+npx kiteretsu init --agent opencode
+
+# Configure for OpenAI Codex only
+npx kiteretsu init --agent codex
+
+# Configure for GitHub Copilot only
+npx kiteretsu init --agent copilot
+
+# Configure all supported agent integrations
+npx kiteretsu init --all
+```
+
+---
+
+## Manual Indexing & Diagnostics
+
+```bash
+# Run incremental repository re-indexing
+npx kiteretsu index
+
+# Run comprehensive health diagnostics
+npx kiteretsu doctor
+
+# Generate architectural mental model
+npx kiteretsu bootstrap
+```
