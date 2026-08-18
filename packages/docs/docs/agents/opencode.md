@@ -47,7 +47,7 @@ Kiteretsu configures the MCP server under `mcp.servers`:
     "servers": {
       "kiteretsu": {
         "type": "local",
-        "command": ["npx", "-y", "@kiteretsu/mcp-server"]
+        "command": ["npx", "-y", "@spellsaif/kiteretsu-mcp-server"]
       }
     }
   }

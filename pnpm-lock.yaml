@@ -45,13 +45,13 @@ importers:
 
   packages/cli:
     dependencies:
-      '@kiteretsu/agent-bridge':
+      '@spellsaif/kiteretsu-agent-bridge':
         specifier: workspace:*
         version: link:../agent-bridge
-      '@kiteretsu/core':
+      '@spellsaif/kiteretsu-core':
         specifier: workspace:*
         version: link:../core
-      '@kiteretsu/mcp-server':
+      '@spellsaif/kiteretsu-mcp-server':
         specifier: workspace:*
         version: link:../mcp-server
       boxen:
@@ -210,12 +210,12 @@ importers:
 
   packages/mcp-server:
     dependencies:
-      '@kiteretsu/core':
-        specifier: workspace:*
-        version: link:../core
       '@modelcontextprotocol/sdk':
         specifier: ^1.30.0
         version: 1.30.0(zod@3.25.76)
+      '@spellsaif/kiteretsu-core':
+        specifier: workspace:*
+        version: link:../core
     devDependencies:
       tsx:
         specifier: ^4.0.0

@@ -19,7 +19,7 @@ This will:
 - Detect your repository languages and existing agent configurations.
 - Create `kiteretsu.config.ts` if missing.
 - Inject non-destructive instructions into `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`, etc.
-- Register `@kiteretsu/mcp-server` MCP endpoints.
+- Register `@spellsaif/kiteretsu-mcp-server` MCP endpoints.
 - Build the initial code graph index.
 
 ---

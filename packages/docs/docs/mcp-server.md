@@ -1,6 +1,6 @@
 # Model Context Protocol (MCP) Server
 
-Kiteretsu exposes its Code Intelligence Graph, Context Compiler, and Memory Layer as a standard **Model Context Protocol (MCP)** server via `@kiteretsu/mcp-server`.
+Kiteretsu exposes its Code Intelligence Graph, Context Compiler, and Memory Layer as a standard **Model Context Protocol (MCP)** server via `@spellsaif/kiteretsu-mcp-server`.
 
 ---
 
@@ -13,7 +13,7 @@ Add Kiteretsu to your MCP client configuration (e.g. `claude_desktop_config.json
   "mcpServers": {
     "kiteretsu": {
       "command": "npx",
-      "args": ["-y", "@kiteretsu/mcp-server"]
+      "args": ["-y", "@spellsaif/kiteretsu-mcp-server"]
     }
   }
 }

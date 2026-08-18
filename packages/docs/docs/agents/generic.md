@@ -42,7 +42,7 @@ Generates a standard `mcp.json` file in the project root:
   "mcpServers": {
     "kiteretsu": {
       "command": "npx",
-      "args": ["-y", "@kiteretsu/mcp-server"]
+      "args": ["-y", "@spellsaif/kiteretsu-mcp-server"]
     }
   }
 }
@@ -57,5 +57,5 @@ If you are configuring a custom agent or MCP client (e.g. Zed, Neovim MCP, Conti
 | Field | Value |
 | :--- | :--- |
 | **Command** | `npx` |
-| **Args** | `["-y", "@kiteretsu/mcp-server"]` |
+| **Args** | `["-y", "@spellsaif/kiteretsu-mcp-server"]` |
 | **Transport** | Stdio |

@@ -5,14 +5,14 @@ import ora from 'ora';
 import cliProgress from 'cli-progress';
 import boxen from 'boxen';
 import gradient from 'gradient-string';
-import { Kiteretsu, loadProjectConfigSync, createDefaultConfigFile } from '@kiteretsu/core';
-import { CodeWatcher } from '@kiteretsu/core/watcher.js';
+import { Kiteretsu, loadProjectConfigSync, createDefaultConfigFile } from '@spellsaif/kiteretsu-core';
+import { CodeWatcher } from '@spellsaif/kiteretsu-core/watcher.js';
 import {
   AgentDetector,
   AgentInstaller,
   AgentUpdater,
   AgentDoctor
-} from '@kiteretsu/agent-bridge';
+} from '@spellsaif/kiteretsu-agent-bridge';
 import path from 'path';
 import fs from 'fs-extra';
 import inquirer from 'inquirer';
@@ -46,7 +46,7 @@ function findWorkspaceRoot(startDir: string): string {
   return startDir;
 }
 
-export { defineConfig, loadProjectConfig, loadProjectConfigSync, createDefaultConfigFile } from '@kiteretsu/core';
+export { defineConfig, loadProjectConfig, loadProjectConfigSync, createDefaultConfigFile } from '@spellsaif/kiteretsu-core';
 
 const rootDir = findWorkspaceRoot(process.cwd());
 const userConfig = loadProjectConfigSync(rootDir);

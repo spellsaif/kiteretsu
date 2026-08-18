@@ -127,7 +127,7 @@ describe('Agent Bridge & Managed Instruction Sections', () => {
     const opencodeJson = await fs.readJson(path.join(TEST_ROOT, 'opencode.json'));
     expect(opencodeJson.mcp.servers.kiteretsu).toBeDefined();
     expect(opencodeJson.mcp.servers.kiteretsu.type).toBe('local');
-    expect(opencodeJson.mcp.servers.kiteretsu.command).toEqual(['npx', '-y', '@kiteretsu/mcp-server']);
+    expect(opencodeJson.mcp.servers.kiteretsu.command).toEqual(['npx', '-y', '@spellsaif/kiteretsu-mcp-server']);
 
     const status = await opencode.validate({ rootDir: TEST_ROOT });
     expect(status.installed).toBe(true);

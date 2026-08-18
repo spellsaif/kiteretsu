@@ -51,7 +51,7 @@ export class ClaudeIntegration implements AgentIntegration {
 
     mcpConfig.mcpServers.kiteretsu = {
       command: ctx.mcpCommand || 'npx',
-      args: ctx.mcpArgs || ['-y', '@kiteretsu/mcp-server'],
+      args: ctx.mcpArgs || ['-y', '@spellsaif/kiteretsu-mcp-server'],
       env: ctx.mcpEnv || {}
     };
 

@@ -6,9 +6,9 @@
     "noEmit": false,
     "allowImportingTsExtensions": false,
     "paths": {
-      "@kiteretsu/core": ["../core/src"],
-      "@kiteretsu/agent-bridge": ["../agent-bridge/src"],
-      "@kiteretsu/mcp-server": ["../mcp-server/src"]
+      "@spellsaif/kiteretsu-core": ["../core/src"],
+      "@spellsaif/kiteretsu-agent-bridge": ["../agent-bridge/src"],
+      "@spellsaif/kiteretsu-mcp-server": ["../mcp-server/src"]
     }
   },
   "include": ["src"]

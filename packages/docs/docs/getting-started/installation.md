@@ -22,7 +22,7 @@ npx kiteretsu init
 ### What Happens During `init`:
 1. **Detects Environment**: Discovers project languages and existing AI coding agent configurations.
 2. **Configures Agents**: Non-destructively updates agent instruction files (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`, etc.).
-3. **Configures MCP**: Registers `@kiteretsu/mcp-server` with detected agent tools.
+3. **Configures MCP**: Registers `@spellsaif/kiteretsu-mcp-server` with detected agent tools.
 4. **Creates Configuration**: Generates canonical `kiteretsu.config.ts` if missing.
 5. **Initializes & Indexes**: Creates `.kiteretsu/` local SQLite database and indexes symbols and dependencies.
 

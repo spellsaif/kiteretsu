@@ -7,7 +7,7 @@ import {
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { Kiteretsu } from '@kiteretsu/core';
+import { Kiteretsu } from '@spellsaif/kiteretsu-core';
 import path from 'path';
 import { fileURLToPath } from 'url';
 

@@ -44,7 +44,7 @@ Kiteretsu configures Claude Code's project MCP connection:
   "mcpServers": {
     "kiteretsu": {
       "command": "npx",
-      "args": ["-y", "@kiteretsu/mcp-server"]
+      "args": ["-y", "@spellsaif/kiteretsu-mcp-server"]
     }
   }
 }

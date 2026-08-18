@@ -18,12 +18,12 @@
     "rootDir": ".",
     "baseUrl": ".",
     "paths": {
-      "@kiteretsu/core": ["packages/core/src"],
-      "@kiteretsu/core/*": ["packages/core/src/*"],
-      "@kiteretsu/agent-bridge": ["packages/agent-bridge/src"],
-      "@kiteretsu/agent-bridge/*": ["packages/agent-bridge/src/*"],
-      "@kiteretsu/mcp-server": ["packages/mcp-server/src"],
-      "@kiteretsu/mcp-server/*": ["packages/mcp-server/src/*"],
+      "@spellsaif/kiteretsu-core": ["packages/core/src"],
+      "@spellsaif/kiteretsu-core/*": ["packages/core/src/*"],
+      "@spellsaif/kiteretsu-agent-bridge": ["packages/agent-bridge/src"],
+      "@spellsaif/kiteretsu-agent-bridge/*": ["packages/agent-bridge/src/*"],
+      "@spellsaif/kiteretsu-mcp-server": ["packages/mcp-server/src"],
+      "@spellsaif/kiteretsu-mcp-server/*": ["packages/mcp-server/src/*"],
       "kiteretsu": ["packages/cli/src"],
       "kiteretsu/*": ["packages/cli/src/*"]
     }

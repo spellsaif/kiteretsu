@@ -1,5 +1,5 @@
 {
-  "name": "@kiteretsu/mcp-server",
+  "name": "@spellsaif/kiteretsu-mcp-server",
   "version": "0.1.0",
   "description": "Model Context Protocol (MCP) Server for Kiteretsu Code Intelligence Graph",
   "license": "MIT",
@@ -42,7 +42,7 @@
     "dev": "tsx watch src/index.ts"
   },
   "dependencies": {
-    "@kiteretsu/core": "workspace:*",
+    "@spellsaif/kiteretsu-core": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.30.0"
   },
   "devDependencies": {

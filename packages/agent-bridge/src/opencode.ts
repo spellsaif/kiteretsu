@@ -55,7 +55,7 @@ export class OpenCodeIntegration implements AgentIntegration {
 
     const commandList = [
       ctx.mcpCommand || 'npx',
-      ...(ctx.mcpArgs || ['-y', '@kiteretsu/mcp-server'])
+      ...(ctx.mcpArgs || ['-y', '@spellsaif/kiteretsu-mcp-server'])
     ];
 
     opencodeConfig.mcp.servers.kiteretsu = {

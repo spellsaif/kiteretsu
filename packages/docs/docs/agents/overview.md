@@ -33,7 +33,7 @@ Kiteretsu connects to agents using two non-destructive mechanisms:
    Your custom instructions outside these tags are **never overwritten**.
 
 2. **Model Context Protocol (MCP)**:
-   Agents connect to Kiteretsu's local Stdio MCP server (`@kiteretsu/mcp-server`) to query symbols, dependencies, blast radius, ADRs, and context packs in real time.
+   Agents connect to Kiteretsu's local Stdio MCP server (`@spellsaif/kiteretsu-mcp-server`) to query symbols, dependencies, blast radius, ADRs, and context packs in real time.
 
 ---
 

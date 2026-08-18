@@ -1,5 +1,5 @@
 {
-  "name": "@kiteretsu/agent-bridge",
+  "name": "@spellsaif/kiteretsu-agent-bridge",
   "version": "0.1.0",
   "description": "Agent detection, MCP configuration, and managed instruction bridges for AI coding agents",
   "license": "MIT",
