@@ -3,24 +3,46 @@
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@10.33.2",
-  "description": "Agent memory, codebase intelligence, and context compiler for AI coding agents",
+  "description": "Continuous Code Intelligence Graph, Context Compiler & Memory Layer for AI Coding Agents",
+  "author": "spellsaif",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/spellsaif/kiteretsu.git"
+  },
+  "bugs": {
+    "url": "https://github.com/spellsaif/kiteretsu/issues"
+  },
+  "homepage": "https://github.com/spellsaif/kiteretsu#readme",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
     "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
     "cli": "pnpm --filter kiteretsu start",
-    "mcp": "pnpm --filter @kiteretsu/mcp-server start"
+    "mcp": "pnpm --filter @kiteretsu/mcp-server start",
+    "pack:check": "pnpm build && pnpm --filter @kiteretsu/core exec npm pack --dry-run && pnpm --filter @kiteretsu/agent-bridge exec npm pack --dry-run && pnpm --filter @kiteretsu/mcp-server exec npm pack --dry-run && pnpm --filter kiteretsu exec npm pack --dry-run",
+    "release:check": "pnpm test && pnpm build && pnpm pack:check"
   },
   "keywords": [
-    "ai",
-    "agent",
-    "memory",
-    "context",
+    "kiteretsu",
+    "code-intelligence",
+    "code-graph",
     "mcp",
-    "coding-agent"
+    "context-compiler",
+    "ai-agents",
+    "developer-tools",
+    "tree-sitter",
+    "ast",
+    "llm-memory",
+    "claude-code",
+    "cursor",
+    "opencode",
+    "gemini"
   ],
-  "author": "",
-  "license": "MIT",
   "devDependencies": {
     "rimraf": "^5.0.0",
     "tsx": "^4.0.0",

@@ -16,6 +16,7 @@ export class LanguageRegistry {
 
   static {
     const definitions: LanguageDefinition[] = [
+      // Tier A: Project-Aware Resolution (dedicated project context adapters for tsconfig, package.json, Cargo.toml, go.mod, pyproject.toml)
       {
         id: 'typescript',
         name: 'TypeScript',
@@ -61,10 +62,12 @@ export class LanguageRegistry {
         entrypoints: ['main.go'],
         ecosystem: 'go'
       },
+
+      // Tier B: AST-Aware & Syntactic Resolution (Tree-sitter AST, symbol extraction, candidate resolution, semantic search)
       {
         id: 'java',
         name: 'Java',
-        tier: 'tier-a-project-aware',
+        tier: 'tier-b-ast-aware',
         extensions: ['.java'],
         wasmGrammar: 'tree-sitter-java.wasm',
         entrypoints: ['Main.java'],
@@ -73,7 +76,7 @@ export class LanguageRegistry {
       {
         id: 'kotlin',
         name: 'Kotlin',
-        tier: 'tier-a-project-aware',
+        tier: 'tier-b-ast-aware',
         extensions: ['.kt', '.kts'],
         wasmGrammar: 'tree-sitter-kotlin.wasm',
         entrypoints: ['Main.kt'],
@@ -82,7 +85,7 @@ export class LanguageRegistry {
       {
         id: 'scala',
         name: 'Scala',
-        tier: 'tier-a-project-aware',
+        tier: 'tier-b-ast-aware',
         extensions: ['.scala', '.sc'],
         wasmGrammar: 'tree-sitter-scala.wasm',
         entrypoints: ['Main.scala'],
@@ -91,7 +94,7 @@ export class LanguageRegistry {
       {
         id: 'c',
         name: 'C',
-        tier: 'tier-a-project-aware',
+        tier: 'tier-b-ast-aware',
         extensions: ['.c', '.h'],
         wasmGrammar: 'tree-sitter-c.wasm',
         entrypoints: ['main.c'],
@@ -100,7 +103,7 @@ export class LanguageRegistry {
       {
         id: 'cpp',
         name: 'C++',
-        tier: 'tier-a-project-aware',
+        tier: 'tier-b-ast-aware',
         extensions: ['.cpp', '.cc', '.cxx', '.hpp', '.hxx', '.hh', '.h'],
         wasmGrammar: 'tree-sitter-cpp.wasm',
         entrypoints: ['main.cpp'],
@@ -118,10 +121,10 @@ export class LanguageRegistry {
       {
         id: 'ruby',
         name: 'Ruby',
-        tier: 'tier-a-project-aware',
-        extensions: ['.rb', '.rake'],
+        tier: 'tier-b-ast-aware',
+        extensions: ['.rb'],
         wasmGrammar: 'tree-sitter-ruby.wasm',
-        entrypoints: ['main.rb'],
+        entrypoints: ['main.rb', 'init.rb'],
         ecosystem: 'ruby'
       },
       {
@@ -157,7 +160,7 @@ export class LanguageRegistry {
         tier: 'tier-b-ast-aware',
         extensions: ['.ex', '.exs'],
         wasmGrammar: 'tree-sitter-elixir.wasm',
-        entrypoints: ['main.ex'],
+        entrypoints: ['mix.exs'],
         ecosystem: 'generic'
       },
       {
@@ -188,43 +191,21 @@ export class LanguageRegistry {
         ecosystem: 'generic'
       },
       {
-        id: 'powershell',
-        name: 'PowerShell',
-        tier: 'tier-c-syntax-indexing',
-        extensions: ['.ps1', '.psm1'],
-        entrypoints: [],
-        ecosystem: 'generic'
-      },
-      {
         id: 'objective-c',
         name: 'Objective-C',
         tier: 'tier-b-ast-aware',
         extensions: ['.m', '.mm'],
-        entrypoints: [],
+        wasmGrammar: 'tree-sitter-objc.wasm',
+        entrypoints: ['main.m'],
         ecosystem: 'c-family'
-      },
-      {
-        id: 'verilog',
-        name: 'Verilog',
-        tier: 'tier-c-syntax-indexing',
-        extensions: ['.v', '.vh'],
-        entrypoints: [],
-        ecosystem: 'generic'
-      },
-      {
-        id: 'systemverilog',
-        name: 'SystemVerilog',
-        tier: 'tier-c-syntax-indexing',
-        extensions: ['.sv', '.svh'],
-        entrypoints: [],
-        ecosystem: 'generic'
       },
       {
         id: 'vue',
         name: 'Vue',
         tier: 'tier-b-ast-aware',
         extensions: ['.vue'],
-        entrypoints: [],
+        wasmGrammar: 'tree-sitter-vue.wasm',
+        entrypoints: ['App.vue'],
         ecosystem: 'typescript'
       },
       {
@@ -232,8 +213,35 @@ export class LanguageRegistry {
         name: 'Svelte',
         tier: 'tier-b-ast-aware',
         extensions: ['.svelte'],
-        entrypoints: [],
+        wasmGrammar: 'tree-sitter-svelte.wasm',
+        entrypoints: ['App.svelte'],
         ecosystem: 'typescript'
+      },
+
+      // Tier C: Syntax & Symbol Indexing
+      {
+        id: 'powershell',
+        name: 'PowerShell',
+        tier: 'tier-c-syntax-indexing',
+        extensions: ['.ps1', '.psm1'],
+        entrypoints: ['profile.ps1'],
+        ecosystem: 'generic'
+      },
+      {
+        id: 'verilog',
+        name: 'Verilog',
+        tier: 'tier-c-syntax-indexing',
+        extensions: ['.v', '.vh'],
+        entrypoints: ['top.v'],
+        ecosystem: 'generic'
+      },
+      {
+        id: 'systemverilog',
+        name: 'SystemVerilog',
+        tier: 'tier-c-syntax-indexing',
+        extensions: ['.sv', '.svh'],
+        entrypoints: ['top.sv'],
+        ecosystem: 'generic'
       }
     ];
 
@@ -246,28 +254,37 @@ export class LanguageRegistry {
   }
 
   static getLanguage(id: string): LanguageDefinition | undefined {
-    return this.languages.get(id);
+    return this.languages.get(id.toLowerCase());
   }
 
   static getLanguageByExtension(ext: string): LanguageDefinition | undefined {
-    const normalized = ext.startsWith('.') ? ext.toLowerCase() : `.${ext.toLowerCase()}`;
-    return this.extensionMap.get(normalized);
+    const cleanExt = ext.startsWith('.') ? ext.toLowerCase() : `.${ext.toLowerCase()}`;
+    return this.extensionMap.get(cleanExt);
+  }
+
+  static getLanguageForFile(filePath: string): LanguageDefinition | undefined {
+    for (const [ext, def] of this.extensionMap.entries()) {
+      if (filePath.toLowerCase().endsWith(ext)) {
+        return def;
+      }
+    }
+    return undefined;
   }
 
   static getAllLanguages(): LanguageDefinition[] {
     return Array.from(this.languages.values());
   }
 
+  static getTierLanguages(tier: LanguageTier): LanguageDefinition[] {
+    return this.getAllLanguages().filter(l => l.tier === tier);
+  }
+
   static getAllExtensions(): string[] {
     return Array.from(this.extensionMap.keys());
   }
 
-  static isSupported(ext: string): boolean {
-    return this.extensionMap.has(ext.startsWith('.') ? ext.toLowerCase() : `.${ext.toLowerCase()}`);
-  }
-
-  static getTier(ext: string): LanguageTier {
-    const lang = this.getLanguageByExtension(ext);
-    return lang ? lang.tier : 'tier-c-syntax-indexing';
+  static getEcosystem(languageId: string): string {
+    const def = this.getLanguage(languageId);
+    return def ? def.ecosystem : 'generic';
   }
 }

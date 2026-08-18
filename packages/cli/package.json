@@ -1,9 +1,41 @@
 {
   "name": "kiteretsu",
   "version": "0.1.0",
+  "description": "Continuous Code Intelligence Graph, Context Compiler & Memory Layer for AI Coding Agents",
+  "license": "MIT",
+  "author": "spellsaif",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/spellsaif/kiteretsu.git",
+    "directory": "packages/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/spellsaif/kiteretsu/issues"
+  },
+  "homepage": "https://github.com/spellsaif/kiteretsu#readme",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "keywords": [
+    "kiteretsu",
+    "cli",
+    "code-intelligence",
+    "code-graph",
+    "mcp",
+    "context-compiler",
+    "ai-agents",
+    "developer-tools",
+    "claude-code",
+    "cursor",
+    "opencode",
+    "gemini"
+  ],
   "bin": {
     "kiteretsu": "dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "scripts": {
     "build": "tsc",

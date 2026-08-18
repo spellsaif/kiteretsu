@@ -1,8 +1,38 @@
 {
   "name": "@kiteretsu/core",
   "version": "0.1.0",
+  "description": "Core intelligence engine, AST code graph, and memory layer for Kiteretsu",
+  "license": "MIT",
+  "author": "spellsaif",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/spellsaif/kiteretsu.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/spellsaif/kiteretsu/issues"
+  },
+  "homepage": "https://github.com/spellsaif/kiteretsu#readme",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "keywords": [
+    "kiteretsu",
+    "code-intelligence",
+    "code-graph",
+    "tree-sitter",
+    "ast",
+    "vector-search",
+    "sqlite-vec"
+  ],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "exports": {
     ".": {

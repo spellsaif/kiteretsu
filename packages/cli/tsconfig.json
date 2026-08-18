@@ -7,7 +7,7 @@
     "allowImportingTsExtensions": false,
     "paths": {
       "@kiteretsu/core": ["../core/src"],
-      "@kiteretsu/server": ["../server/src"],
+      "@kiteretsu/agent-bridge": ["../agent-bridge/src"],
       "@kiteretsu/mcp-server": ["../mcp-server/src"]
     }
   },

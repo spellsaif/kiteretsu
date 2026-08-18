@@ -2,9 +2,40 @@
   "name": "@kiteretsu/agent-bridge",
   "version": "0.1.0",
   "description": "Agent detection, MCP configuration, and managed instruction bridges for AI coding agents",
+  "license": "MIT",
+  "author": "spellsaif",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/spellsaif/kiteretsu.git",
+    "directory": "packages/agent-bridge"
+  },
+  "bugs": {
+    "url": "https://github.com/spellsaif/kiteretsu/issues"
+  },
+  "homepage": "https://github.com/spellsaif/kiteretsu#readme",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "keywords": [
+    "kiteretsu",
+    "agent-bridge",
+    "claude-code",
+    "cursor",
+    "opencode",
+    "gemini",
+    "codex",
+    "copilot",
+    "mcp"
+  ],
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run"

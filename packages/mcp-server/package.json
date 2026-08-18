@@ -1,8 +1,40 @@
 {
   "name": "@kiteretsu/mcp-server",
   "version": "0.1.0",
+  "description": "Model Context Protocol (MCP) Server for Kiteretsu Code Intelligence Graph",
+  "license": "MIT",
+  "author": "spellsaif",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/spellsaif/kiteretsu.git",
+    "directory": "packages/mcp-server"
+  },
+  "bugs": {
+    "url": "https://github.com/spellsaif/kiteretsu/issues"
+  },
+  "homepage": "https://github.com/spellsaif/kiteretsu#readme",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "keywords": [
+    "kiteretsu",
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "code-intelligence",
+    "ai-agents"
+  ],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "kiteretsu-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "scripts": {
     "build": "tsc",

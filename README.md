@@ -192,30 +192,28 @@ Frustrating debugging loop                      Clean, safe, idiomatic implement
 
 ## 🌐 Supported Languages & Capability Tiers
 
-Kiteretsu categorizes language support into explicit, verifiable capability tiers:
+Kiteretsu categorizes language support into explicit, implementation-driven capability tiers:
 
 ### Tier A — Project-Aware Resolution
-*Full AST parsing, symbol extraction, call/heritage graph, project metadata (`tsconfig`, `Cargo.toml`, `go.mod`, `pyproject`, `pom.xml`), candidate verification, and semantic search.*
+*Dedicated project configuration adapters (`tsconfig.json`, `package.json`, `Cargo.toml`, `go.mod`, `pyproject.toml`), full AST symbol extraction, heritage relations (`extends`, `implements`, `calls`), candidate verification, and semantic search.*
 
 | Language | AST Parser | Declared Symbols | Call & Heritage Graph | Project Metadata Adapter | Conformance |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **TypeScript / TSX** | ✅ Tree-sitter | ✅ Functions, Classes, Methods, Types | ✅ `calls`, `extends`, `implements` | ✅ `tsconfig.json` paths, baseUrl | **100% PASS** |
-| **JavaScript / JSX** | ✅ Tree-sitter | ✅ Functions, Classes, Methods | ✅ `calls`, `extends` | ✅ `package.json` workspaces/exports | **100% PASS** |
-| **Python** | ✅ Tree-sitter | ✅ Functions, Classes, Methods | ✅ `calls`, inheritance | ✅ `pyproject.toml`, src layout | **100% PASS** |
-| **Rust** | ✅ Tree-sitter | ✅ Structs, Enums, Traits, Functions | ✅ `impl`, `trait` references | ✅ `Cargo.toml` workspace/crates | **100% PASS** |
-| **Go** | ✅ Tree-sitter | ✅ Structs, Interfaces, Functions | ✅ struct embeds, calls | ✅ `go.mod` module prefix | **100% PASS** |
-| **Java / Kotlin** | ✅ Tree-sitter | ✅ Classes, Methods, Interfaces | ✅ references | ✅ Maven / Gradle source roots | **100% PASS** |
-| **Scala** | ✅ Tree-sitter | ✅ Classes, Objects, Traits | ✅ references | ✅ JVM package resolution | **100% PASS** |
-| **C / C++** | ✅ Tree-sitter | ✅ Functions, Structs, Classes | ✅ references | ✅ Include directories & headers | **100% PASS** |
-| **Ruby** | ✅ Tree-sitter | ✅ Classes, Modules, Methods | ✅ `calls`, inheritance | ✅ `lib/` directory & relative | **100% PASS** |
+| **TypeScript / TSX** | ✅ Tree-sitter | ✅ Functions, Classes, Methods, Types | ✅ `calls`, `extends`, `implements` | ✅ `tsconfig.json` paths, baseUrl | **Verified** |
+| **JavaScript / JSX** | ✅ Tree-sitter | ✅ Functions, Classes, Methods | ✅ `calls`, `extends` | ✅ `package.json` workspaces/exports | **Verified** |
+| **Python** | ✅ Tree-sitter | ✅ Functions, Classes, Methods | ✅ `calls`, inheritance | ✅ `pyproject.toml`, src layout | **Verified** |
+| **Rust** | ✅ Tree-sitter | ✅ Structs, Enums, Traits, Functions | ✅ `impl`, `trait` references | ✅ `Cargo.toml` workspace/crates | **Verified** |
+| **Go** | ✅ Tree-sitter | ✅ Structs, Interfaces, Functions | ✅ struct embeds, calls | ✅ `go.mod` module prefix | **Verified** |
 
 ### Tier B — AST-Aware Resolution
-*Tree-sitter AST parsing, symbol extraction, AST reference graph, candidate verification, and semantic search.*
-- **C#**, **PHP**, **Swift**, **Dart**, **Elixir**, **Lua**, **Zig**, **Julia**, **Objective-C**, **Vue**, **Svelte**
+*Tree-sitter AST parsing, declared symbol extraction, AST reference graph, candidate verification against filesystem, and semantic retrieval.*
+- **Java / Kotlin / Scala**, **C / C++ / Objective-C**, **Ruby**, **C#**, **PHP**, **Swift**, **Dart**, **Elixir**, **Lua**, **Zig**, **Julia**, **Vue**, **Svelte**
 
 ### Tier C — Syntax & Symbol Indexing
-*Lexical & symbol declaration indexing with semantic retrieval.*
+*Lexical matching and symbol declaration indexing with semantic retrieval.*
 - **PowerShell**, **Verilog**, **SystemVerilog**
+
+> **Note on 0.1.0 Resolution**: 0.1.0 is an early public release. Language resolution coverage varies by ecosystem and capability tier. Tier A ecosystems feature dedicated project/package configuration adapters; Tier B ecosystems perform AST-aware and lexical import resolution.
 
 ---
 

@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -464,7 +465,15 @@ export async function runMcpServer(customRootDir?: string) {
   await server.connect(transport);
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+const isDirectExecution =
+  !process.env.VITEST &&
+  (process.argv[1] === fileURLToPath(import.meta.url) ||
+    process.argv[1]?.endsWith('kiteretsu-mcp') ||
+    process.argv[1]?.endsWith('kiteretsu-mcp.js') ||
+    process.argv[1]?.endsWith('dist/index.js') ||
+    process.argv[1]?.endsWith('src/index.ts'));
+
+if (isDirectExecution) {
   runMcpServer().catch((error) => {
     console.error('Fatal error running Kiteretsu MCP server:', error);
     process.exit(1);

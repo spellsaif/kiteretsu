@@ -20,8 +20,12 @@
     "paths": {
       "@kiteretsu/core": ["packages/core/src"],
       "@kiteretsu/core/*": ["packages/core/src/*"],
-      "@kiteretsu/server": ["packages/server/src"],
-      "@kiteretsu/server/*": ["packages/server/src/*"]
+      "@kiteretsu/agent-bridge": ["packages/agent-bridge/src"],
+      "@kiteretsu/agent-bridge/*": ["packages/agent-bridge/src/*"],
+      "@kiteretsu/mcp-server": ["packages/mcp-server/src"],
+      "@kiteretsu/mcp-server/*": ["packages/mcp-server/src/*"],
+      "kiteretsu": ["packages/cli/src"],
+      "kiteretsu/*": ["packages/cli/src/*"]
     }
   },
   "exclude": ["node_modules", "dist"]
