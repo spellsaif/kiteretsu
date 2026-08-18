@@ -135,7 +135,7 @@ Frustrating debugging loop                      Clean, safe, idiomatic implement
     Retrieval Subsystem        Memory Subsystem             Graph Subsystem
    • IDF Lexical Search       • Architectural ADRs        • Polymorphic Edges
    • Semantic Search (ONNX)   • Scoped Rules (path/lang)  • AST Symbol Graph
-   • Graph Proximity Walker   • Episodic Task History     • Dependency Resolvers
+   • Graph Proximity Walker   • Episodic Task History     • Resolution Engine
         │                             │                             │
         └─────────────────────────────┼─────────────────────────────┘
                                       │
@@ -147,17 +147,29 @@ Frustrating debugging loop                      Clean, safe, idiomatic implement
                          SQLite WAL Intelligence DB
                           (Knex + sqlite-vec engine)
                                       │
-                         4-Pass Incremental Indexer
+                      Universal Resolution Engine & IR
+               ┌──────────────────────┴──────────────────────┐
+               ▼                                             ▼
+       Language Registry                              Project Context
+   (Extensions, Tiers, Grammars)                (tsconfig, Cargo, go.mod, etc.)
+               │                                             │
+               └──────────────────────┬──────────────────────┘
+                                      ▼
+                                  Import IR
+                        (Kind, Source, Location, Spec)
+                                      │
+                          4-Pass Incremental Indexer
                      (Diff → Parse → Declare → Link Edges)
                                       │
                         Web-Tree-Sitter AST Parsers
-              (TypeScript, Python, Rust, Go, Ruby, Java, C/C++)
 ```
 
 ---
 
 ## ✨ Core Capabilities
 
+- **Universal Resolution Engine & Import IR**: Eliminates language-spaghetti resolvers by decoupling Tree-sitter AST extraction into semantic `ImportReference` IR, feeding project adapters (`tsconfig`, `Cargo.toml`, `go.mod`, `pyproject`) through verified candidate resolution.
+- **Master Language Registry**: Centralizes extensions, WASM grammars, entrypoints, and capability tiers into a single source of truth consumed across the scanner, parser, and resolver.
 - **AST Symbol-Level Graph**: Extracts functions, methods, classes, and interfaces alongside their `calls`, `extends`, `implements`, `references`, and `exports` relations.
 - **Four-Signal Multi-Sensor Fusion Retrieval**: Combines IDF-Weighted Lexical matching, ONNX Vector Cosine Similarity, Symbol Heritage & Graph Proximity, and Memory Scope matching with explainable relevance scoring.
 - **Symbol-Aware Graph Expansion**: Traverses spatial symbol links (`calls`, `extends`, `implements`, `tested_by`) to aggregate interconnected files into candidate ranking.
@@ -167,8 +179,36 @@ Frustrating debugging loop                      Clean, safe, idiomatic implement
 - **First-Class Blast Radius**: Predict downstream impact before making edits with risk ratings (`LOW`, `MEDIUM`, `HIGH`), caller trees, and affected tests.
 - **Deep Code Explanation (`kiteretsu explain`)**: Synthesizes source AST, graph callers/callees, ADRs, rules, and tests to explain *why* code exists.
 - **Zero-Friction Agent Bridge**: Predictably configures instructions and MCP settings for Claude Code, Cursor, Gemini CLI, OpenCode, OpenAI Codex, GitHub Copilot, and Generic MCP agents.
-- **Managed Section Safety**: Uses bounded `<!-- KITERETSU:START -->` blocks to update agent instructions without ever overwriting custom developer notes.
-- **Incremental Indexing Pipeline**: Fast 4-pass scanner reconciles deleted files, diffs AST changes, and preserves sub-millisecond query times.
+- **First-Class Fixture Conformance**: Normal `pnpm test` CI suite continuously validates 32 multi-language fixtures against true blast radius and negative false-positive assertions.
+
+---
+
+## 🌐 Supported Languages & Capability Tiers
+
+Kiteretsu categorizes language support into explicit, verifiable capability tiers:
+
+### Tier A — Project-Aware Resolution
+*Full AST parsing, symbol extraction, call/heritage graph, project metadata (`tsconfig`, `Cargo.toml`, `go.mod`, `pyproject`, `pom.xml`), candidate verification, and semantic search.*
+
+| Language | AST Parser | Declared Symbols | Call & Heritage Graph | Project Metadata Adapter | Conformance |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **TypeScript / TSX** | ✅ Tree-sitter | ✅ Functions, Classes, Methods, Types | ✅ `calls`, `extends`, `implements` | ✅ `tsconfig.json` paths, baseUrl | **100% PASS** |
+| **JavaScript / JSX** | ✅ Tree-sitter | ✅ Functions, Classes, Methods | ✅ `calls`, `extends` | ✅ `package.json` workspaces/exports | **100% PASS** |
+| **Python** | ✅ Tree-sitter | ✅ Functions, Classes, Methods | ✅ `calls`, inheritance | ✅ `pyproject.toml`, src layout | **100% PASS** |
+| **Rust** | ✅ Tree-sitter | ✅ Structs, Enums, Traits, Functions | ✅ `impl`, `trait` references | ✅ `Cargo.toml` workspace/crates | **100% PASS** |
+| **Go** | ✅ Tree-sitter | ✅ Structs, Interfaces, Functions | ✅ struct embeds, calls | ✅ `go.mod` module prefix | **100% PASS** |
+| **Java / Kotlin** | ✅ Tree-sitter | ✅ Classes, Methods, Interfaces | ✅ references | ✅ Maven / Gradle source roots | **100% PASS** |
+| **Scala** | ✅ Tree-sitter | ✅ Classes, Objects, Traits | ✅ references | ✅ JVM package resolution | **100% PASS** |
+| **C / C++** | ✅ Tree-sitter | ✅ Functions, Structs, Classes | ✅ references | ✅ Include directories & headers | **100% PASS** |
+| **Ruby** | ✅ Tree-sitter | ✅ Classes, Modules, Methods | ✅ `calls`, inheritance | ✅ `lib/` directory & relative | **100% PASS** |
+
+### Tier B — AST-Aware Resolution
+*Tree-sitter AST parsing, symbol extraction, AST reference graph, candidate verification, and semantic search.*
+- **C#**, **PHP**, **Swift**, **Dart**, **Elixir**, **Lua**, **Zig**, **Julia**, **Objective-C**, **Vue**, **Svelte**
+
+### Tier C — Syntax & Symbol Indexing
+*Lexical & symbol declaration indexing with semantic retrieval.*
+- **PowerShell**, **Verilog**, **SystemVerilog**
 
 ---
 
