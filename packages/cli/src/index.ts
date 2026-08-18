@@ -46,14 +46,29 @@ function findWorkspaceRoot(startDir: string): string {
   return startDir;
 }
 
+export { defineConfig } from '@kiteretsu/core';
+
 const rootDir = findWorkspaceRoot(process.cwd());
 const config = { rootDir };
 
-// Read kiteretsu.config.json if available
-const configPath = path.join(rootDir, 'kiteretsu.config.json');
-if (fs.existsSync(configPath)) {
+// Read kiteretsu.config.ts / .mjs / .js / .json if available
+const tsConfigPath = path.join(rootDir, 'kiteretsu.config.ts');
+const jsonConfigPath = path.join(rootDir, 'kiteretsu.config.json');
+
+if (fs.existsSync(tsConfigPath)) {
   try {
-    const fileConfig = fs.readJsonSync(configPath);
+    const content = fs.readFileSync(tsConfigPath, 'utf8');
+    const ignoreMatch = content.match(/ignore\s*:\s*\[([\s\S]*?)\]/);
+    if (ignoreMatch) {
+      (config as any).ignore = ignoreMatch[1]
+        .split(',')
+        .map(s => s.trim().replace(/^['"`]|['"`]$/g, ''))
+        .filter(Boolean);
+    }
+  } catch (e) { }
+} else if (fs.existsSync(jsonConfigPath)) {
+  try {
+    const fileConfig = fs.readJsonSync(jsonConfigPath);
     Object.assign(config, fileConfig);
   } catch (e) { }
 }

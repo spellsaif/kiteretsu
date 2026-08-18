@@ -1,5 +1,6 @@
 export * from './engine/index.js';
 export * from './database.js';
+export * from './config.js';
 export * from './scanner.js';
 export * from './embeddings.js';
 export * from './parser.js';

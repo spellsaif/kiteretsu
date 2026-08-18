@@ -6,6 +6,7 @@ import xxhash from 'xxhash-wasm';
 export interface ScanOptions {
   include?: string[];
   exclude?: string[];
+  ignore?: string[];
   rootDir: string;
 }
 
@@ -114,6 +115,7 @@ export class Scanner {
         ...GLOBAL_BLACK_LIST,
         ...GARBAGE_PATTERNS,
         ...(this.options.exclude || []),
+        ...(this.options.ignore || []),
         ...customIgnores
       ])
     ];

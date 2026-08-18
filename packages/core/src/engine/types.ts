@@ -1,4 +1,1 @@
-export interface KiteretsuConfig {
-  rootDir: string;
-  dbPath?: string;
-}
+export type { KiteretsuConfig } from '../config.js';

@@ -1,7 +1,7 @@
 import path from 'path';
 import fs from 'fs-extra';
 import { Database } from '../database.js';
-import { Scanner } from '../scanner.js';
+import { Scanner, ScanOptions } from '../scanner.js';
 import type { CodeParser } from '../parser.js';
 import type { CodeAnalyzer } from '../analyzer.js';
 import { EmbeddingEngine } from '../embeddings.js';
@@ -14,6 +14,7 @@ import { SemanticRetriever, SemanticSearchResult } from '../retrieval/semantic.j
 import { Indexer, PrecomputedData, IndexProgressCallback, IndexSummary } from '../indexer/indexer.js';
 import { ContextCompiler, ContextPackOptions, ContextPackResult } from '../context/context-compiler.js';
 import { KiteretsuConfig } from './types.js';
+import { createDefaultConfigFile } from '../config.js';
 
 export class Kiteretsu {
   private _db?: Database;
@@ -33,8 +34,8 @@ export class Kiteretsu {
   private rootDir: string;
   private config: KiteretsuConfig;
 
-  constructor(config: KiteretsuConfig) {
-    this.rootDir = path.resolve(config.rootDir).replace(/\\/g, '/');
+  constructor(config: KiteretsuConfig = {}) {
+    this.rootDir = path.resolve(config.rootDir || process.cwd()).replace(/\\/g, '/');
     if (process.platform === 'win32' && /^[a-z]:/i.test(this.rootDir)) {
       this.rootDir = this.rootDir[0].toLowerCase() + this.rootDir.slice(1);
     }
@@ -87,20 +88,37 @@ export class Kiteretsu {
 
   get scanner(): Scanner {
     if (!this._scanner) {
+      const tsConfigPath = path.join(this.rootDir, 'kiteretsu.config.ts');
       const rootConfigPath = path.join(this.rootDir, 'kiteretsu.config.json');
       const internalConfigPath = path.join(this.rootDir, '.kiteretsu', 'config.json');
 
-      let scanOptions: { rootDir: string; include?: string[]; exclude?: string[] } = { rootDir: this.rootDir };
-      const configPath = fs.existsSync(rootConfigPath) ? rootConfigPath : (fs.existsSync(internalConfigPath) ? internalConfigPath : null);
+      let scanOptions: ScanOptions = { rootDir: this.rootDir };
 
-      if (configPath) {
+      if (fs.existsSync(tsConfigPath)) {
         try {
-          const fileConfig = fs.readJsonSync(configPath);
-          if (fileConfig.indexing) {
-            scanOptions.include = fileConfig.indexing.include;
-            scanOptions.exclude = fileConfig.indexing.exclude;
+          const content = fs.readFileSync(tsConfigPath, 'utf8');
+          const ignoreMatch = content.match(/ignore\s*:\s*\[([\s\S]*?)\]/);
+          if (ignoreMatch) {
+            scanOptions.ignore = ignoreMatch[1]
+              .split(',')
+              .map(s => s.trim().replace(/^['"`]|['"`]$/g, ''))
+              .filter(Boolean);
           }
         } catch { }
+      } else {
+        const configPath = fs.existsSync(rootConfigPath) ? rootConfigPath : (fs.existsSync(internalConfigPath) ? internalConfigPath : null);
+        if (configPath) {
+          try {
+            const fileConfig = fs.readJsonSync(configPath);
+            if (fileConfig.indexing) {
+              scanOptions.include = fileConfig.indexing.include;
+              scanOptions.exclude = fileConfig.indexing.exclude;
+            }
+            if (fileConfig.ignore) {
+              scanOptions.ignore = fileConfig.ignore;
+            }
+          } catch { }
+        }
       }
 
       this._scanner = new Scanner(scanOptions);
@@ -178,44 +196,10 @@ export class Kiteretsu {
     await fs.ensureDir(kiteretsuDir);
     await fs.ensureDir(path.join(kiteretsuDir, 'memory'));
 
-    const configPath = path.join(this.rootDir, 'kiteretsu.config.json');
-    if (!(await fs.pathExists(configPath))) {
-      const detectedExcludes = [
-        '**/.kiteretsu/**', '**/.git/**', '**/.turbo/**', '**/.cache/**',
-        '**/.next/**', '**/.nuxt/**', '**/.svelte-kit/**', '**/.gradle/**',
-        '**/.venv/**', '**/venv/**', '**/__pycache__/**', '**/node_modules/**',
-        '**/dist/**', '**/build/**', '**/target/**', '**/vendor/**', '**/coverage/**', '**/out/**'
-      ];
-      const initialConfig = {
-        name: path.basename(this.rootDir),
-        version: '0.1.0',
-        indexing: {
-          include: ['**/*'],
-          exclude: detectedExcludes
-        }
-      };
-      await fs.writeJson(configPath, initialConfig, { spaces: 2 });
-    }
-
-    const ignorePath = path.join(this.rootDir, '.kiteretsuignore');
-    if (!(await fs.pathExists(ignorePath))) {
-      const content = [
-        '# Kiteretsu Ignore Patterns',
-        '# Add files and directories here that should not be indexed.',
-        '*.min.js',
-        '*.min.css',
-        '*.map',
-        '*.lock',
-        '*.wasm',
-        'dist/',
-        'build/',
-        'target/',
-        '.turbo/',
-        '.cache/',
-        '',
-        '# Custom ignores below',
-      ].join('\n');
-      await fs.writeFile(ignorePath, content);
+    const tsConfigPath = path.join(this.rootDir, 'kiteretsu.config.ts');
+    const jsonConfigPath = path.join(this.rootDir, 'kiteretsu.config.json');
+    if (!(await fs.pathExists(tsConfigPath)) && !(await fs.pathExists(jsonConfigPath))) {
+      await createDefaultConfigFile(this.rootDir);
     }
   }
 
